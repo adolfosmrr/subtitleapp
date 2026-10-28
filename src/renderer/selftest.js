@@ -1,5 +1,5 @@
 export async function selfTest(cfg, ctx) {
-  const { state, S, $, api, openFile, syncStyleUI, renderSegs, renderOverlay, ensureMetrics, tick, burn, setUiLang, isDirty, snap, saveProject, newProject, loadProject, transcribe, sorted, resegmentAll, undo, translate, buildAss, fontRatio, BUILTIN_PRESETS } = ctx;
+  const { state, S, $, api, openFile, syncStyleUI, renderSegs, renderOverlay, renderTimeline, jumpTo, ensureMetrics, tick, burn, setUiLang, isDirty, snap, saveProject, newProject, loadProject, transcribe, sorted, resegmentAll, undo, translate, buildAss, fontRatio, BUILTIN_PRESETS } = ctx;
   const res = { ok: false, steps: [] }; const log = (k, v) => { res.steps.push({ k, v }); console.log('SELFTEST', k, JSON.stringify(v)); };
   if (cfg.compare) {
     try {
@@ -28,6 +28,42 @@ export async function selfTest(cfg, ctx) {
       if (C.overlays) for (const m of ['alpha', 'green', 'black']) {
         const r = await burn(C.out + 'ovl-' + m + (m === 'alpha' ? '.mov' : '.mp4'), m);
         log('overlay', { m, ok: r && r.ok, out: r && r.out, in: r && [r.in.width, r.in.height, r.in.fps, r.in.duration] });
+      }
+      if (C.features) {
+        const wait = (ms) => new Promise(r => setTimeout(r, ms)); const v = $('#video'); v.pause();
+        setUiLang('es'); document.querySelector('.tab[data-tab="subs"]').click();
+        state.segs = Array.from({ length: 14 }, (_, i) => ({ id: 'f' + i, start: i * 2.5, end: i * 2.5 + 2.2, text: `Subtítulo número ${i + 1} de prueba` }));
+        state.undo = []; renderSegs(); renderOverlay(); renderTimeline(); await wait(400);
+        const blk = (i) => document.querySelectorAll('#timeline .blk')[i];
+        const at = (el, type, dx = 0) => { const b = el.getBoundingClientRect(); const o = { bubbles: true, cancelable: true, clientX: b.x + b.width / 2 + dx, clientY: b.y + b.height / 2 }; el.dispatchEvent(type === 'pointerdown' ? new PointerEvent(type, o) : new MouseEvent(type, o)); };
+        at(blk(11), 'pointerdown'); at(blk(11), 'click'); await wait(900);
+        const segEl = document.querySelectorAll('.seg')[11]; const lr = $('#segList').getBoundingClientRect(); const sr = segEl.getBoundingClientRect();
+        log('timelineJump', { time: +v.currentTime.toFixed(2), start: 27.5, sel: state.sel, listSel: segEl.classList.contains('sel'), blkSel: blk(11).classList.contains('sel'), inView: sr.top >= lr.top - 1 && sr.bottom <= lr.bottom + 1, focused: document.activeElement === segEl.querySelector('textarea') });
+        await api.test.shot(C.shots + 'timeline-jump.png');
+        const t0 = v.currentTime; at(blk(2), 'pointerdown'); at(blk(2), 'click', 30); await wait(200);
+        log('dragNoJump', { sel: state.sel, timeUnchanged: v.currentTime === t0 });
+        document.activeElement.blur(); document.querySelectorAll('.seg')[4].querySelector('.num').click(); await wait(100);
+        log('listToTimeline', { sel: state.sel, blkSel: blk(4).classList.contains('sel') });
+        v.currentTime = 5.1; await wait(500); tick(); v.play().catch(() => {}); await wait(300);
+        const before = state.undo.length; const dirty0 = isDirty();
+        at(document.querySelector('#overlay .sub'), 'dblclick'); await wait(300);
+        const ed = document.querySelector('.inline-edit');
+        log('editorOpen', { open: !!ed, paused: v.paused, value: ed && ed.value, hidden: document.querySelector('#overlay .sub.editing') !== null, rect: ed && [ed.offsetLeft, ed.offsetTop, ed.offsetWidth, ed.style.width, ed.style.left], pos: state.style.position, sub: [...document.querySelectorAll('#overlay .sub .ln')].map(x => { const r = x.getBoundingClientRect(); return [r.left, r.width]; }) });
+        ed.value = 'Texto editado   en la pantalla\nsegunda línea'; ed.dispatchEvent(new Event('input')); await wait(600); log('editorRect', { r: [...Object.values(ed.getBoundingClientRect().toJSON())], n: document.querySelectorAll('textarea.inline-edit').length, at: (() => { const p = $('#player').getBoundingClientRect(); const x = document.elementFromPoint(p.left + 60, p.top + 30); return x && (x.className || x.tagName); })(), iw: innerWidth, dpr: devicePixelRatio, pl: [...Object.values($('#player').getBoundingClientRect().toJSON())] });
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+        await api.test.shot(C.shots + 'inline-edit.png');
+        ed.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); await wait(300);
+        const s2 = state.segs.find(x => x.id === 'f2');
+        log('editSaved', { text: s2.text, list: document.querySelectorAll('.seg textarea')[2].value, blk: blk(2).textContent, overlay: document.querySelector('#overlay .sub').textContent, undo: state.undo.length - before, dirtyBefore: dirty0, dirty: isDirty(), editorGone: !document.querySelector('.inline-edit') });
+        at(document.querySelector('#overlay .sub'), 'dblclick'); await wait(200);
+        const e2 = document.querySelector('.inline-edit'); e2.value = 'NO'; e2.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); await wait(200);
+        log('escCancels', { text: s2.text, editorGone: !document.querySelector('.inline-edit') });
+        at(document.querySelector('#overlay .sub'), 'dblclick'); await wait(200);
+        const e3 = document.querySelector('.inline-edit'); e3.value = 'Guardado al hacer clic afuera'; document.querySelector('.timeline').dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); await wait(200);
+        log('outsideSaves', { text: s2.text });
+        undo(); undo(); log('undo', { text: state.segs.find(x => x.id === 'f2').text });
+        setUiLang('en'); log('i18n', { sub: document.querySelector('#overlay .sub')?.title, blk: blk(0).title });
+        setUiLang('auto');
       }
       if (C.project) {
         state.segs = [{ id: 'a', start: 0.5, end: 3, text: 'Primera línea del proyecto' }, { id: 'b', start: 3.2, end: 6, text: C.text }];

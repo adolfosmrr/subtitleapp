@@ -106,3 +106,10 @@ input[type=color] { width: 44px; height: 26px; border: 1px solid var(--line); bo
 .panel label.inline select { max-width: 160px; }
 
 .proj{font-weight:600;color:#e8eaf0;white-space:nowrap;margin-right:10px}.proj .dot{color:#f5a623}
+.overlay .sub.editing { visibility: hidden; }
+.player .inline-edit { position:absolute; left:0; top:0; box-sizing:border-box; max-width:none; min-height:0; z-index:5; text-align:center; resize:none; overflow:hidden; background: rgba(0,0,0,.55); border: 2px solid var(--acc); border-radius: 8px; padding: 2px 6px; outline: none; box-shadow: 0 4px 24px rgba(0,0,0,.5); }
+.timeline .blk { cursor: pointer; }
+.timeline .blk:hover { border-color: #fff; }
+.seg { cursor: pointer; }
+.seg.flash { animation: segflash 1.2s ease-out; }
+@keyframes segflash { 0% { box-shadow: 0 0 0 3px var(--acc); background: rgba(124,92,255,.25); } 100% { box-shadow: 0 0 0 0 transparent; } }

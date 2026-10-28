@@ -12,6 +12,7 @@ Subtitulador turns a video (or audio) into styled subtitles entirely on your Mac
 - **Transcription with Whisper** (tiny → large-v3-turbo), English/Spanish auto-detect or manual, with **per-word timestamps**. GPU (WebGPU) with CPU fallback.
 - **Translation English ↔ Spanish** (Opus-MT), keeping the timings.
 - **Subtitle editor**: text and timings, words per subtitle (1–15 or automatic), 1–2 lines, re-segment, undo.
+- Click a timeline block to jump to that subtitle; double-click the subtitle on the video to edit it in place.
 - **Style editor with live preview** that matches the final render exactly: font (bundled Google Fonts or system fonts), size, color, outline, **solid or blurred shadow**, background box, **line height**, position (top/middle/bottom or drag anywhere). Save your own presets.
 - **Export**
   - Video with burned-in subtitles at the original resolution and frame rate: H.264, HEVC or ProRes 422 HQ (audio copied).

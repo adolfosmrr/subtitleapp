@@ -32,7 +32,7 @@ function compareConfig(out) {
     { name: 'blur', style: { ...base, lineHeight: 1.1, outlineWidth: 0, shadowType: 'blur', shadowOffset: 0.8, shadowBlur: 0.8 } },
     { name: 'boxtop', style: { ...base, lineHeight: 1.6, box: true, position: 'top' } },
   ];
-  return { compare: { input: path.join(samples, 'en.mp4'), out: out + path.sep, text: 'Había una vez una abeja que no quería trabajar nada', overlays: true, uiShots: true,
+  return { compare: { input: path.join(samples, 'en.mp4'), out: out + path.sep, text: 'Había una vez una abeja que no quería trabajar nada', overlays: true, uiShots: true, features: true, shots: path.join(root, 'shots') + path.sep,
     project: path.join(out, 'p/test.subtitulador'), projMoved: path.join(out, 'moved/proj/test.subtitulador'), projLost: path.join(out, 'lost.subtitulador'), variants } };
 }
 

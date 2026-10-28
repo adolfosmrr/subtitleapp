@@ -12,6 +12,7 @@ Subtitulador convierte un video (o audio) en subtítulos con estilo, todo en tu 
 - **Transcripción con Whisper** (tiny → large-v3-turbo), detección automática inglés/español o manual, con **tiempos por palabra**. GPU (WebGPU) o CPU.
 - **Traducción inglés ↔ español** (Opus-MT), manteniendo los tiempos.
 - **Editor de subtítulos**: texto y tiempos, palabras por subtítulo (1–15 o automático), 1–2 líneas, re-segmentar, deshacer.
+- Clic en un bloque de la línea de tiempo para saltar a ese subtítulo; doble clic en el subtítulo del video para editarlo ahí mismo.
 - **Editor de estilo con vista previa** idéntica al resultado final: fuente (Google Fonts incluidas o del sistema), tamaño, colores, borde, **sombra sólida o difuminada**, caja de fondo, **interlineado**, posición (arriba/centro/abajo o arrastrando). Presets propios.
 - **Exportación**
   - Video con subtítulos quemados, misma resolución y fps: H.264, HEVC o ProRes 422 HQ (audio sin recomprimir).

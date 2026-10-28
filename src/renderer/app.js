@@ -23,7 +23,7 @@ function progress(p, txt) {
 let toastT; function toast(msg, err) { const el = $('#toast'); el.textContent = msg; el.className = 'toast' + (err ? ' err' : ''); el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, err ? 7000 : 3500); }
 const mb = (b) => (b / 1048576).toFixed(0) + ' MB';
 function pushUndo() { state.undo.push(JSON.stringify(state.segs)); if (state.undo.length > 100) state.undo.shift(); }
-function undo() { if (!state.undo.length) return; state.segs = JSON.parse(state.undo.pop()); renderSegs(); renderOverlay(); }
+function undo() { if (!state.undo.length) return; state.segs = JSON.parse(state.undo.pop()); renderSegs(); renderOverlay(); renderTimeline(); }
 function setBusy(b) {
   state.busy = b;
   $('#btnTranscribe').disabled = b || !state.file;
@@ -211,9 +211,20 @@ function renderSegs() {
       if (a === 'del') { state.segs = state.segs.filter(x => x !== s); state.sel = -1; }
       renderSegs(); renderOverlay(); renderTimeline();
     });
+    el.addEventListener('click', (e) => { if (e.target.closest('button')) return; if (state.sel !== i) { state.sel = i; markSel(); } });
     list.appendChild(el);
   });
   setBusy(state.busy);
+}
+function jumpTo(i) {
+  const segs = sorted(); const s = segs[i]; if (!s) return;
+  const v = $('#video'); v.currentTime = s.start + 0.01;
+  state.sel = i; markSel();
+  const tab = document.querySelector('.tab[data-tab="subs"]'); if (tab && !tab.classList.contains('active')) tab.click();
+  const el = document.querySelectorAll('.seg')[i]; if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  const ta = el.querySelector('textarea'); ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length);
 }
 function markSel() { document.querySelectorAll('.seg').forEach((el, i) => el.classList.toggle('sel', i === state.sel)); renderTimeline(); }
 function addSeg() {
@@ -247,7 +258,7 @@ function renderOverlay() {
   for (const s of active) {
     const pos = S.linePositions(g, s.lines.length, lineH);
     const top = Math.min(...pos.map(p => p.an === 2 ? p.y - lineH : p.an === 8 ? p.y : p.y - lineH / 2));
-    const d = document.createElement('div'); d.className = 'sub' + (st.box ? ' boxed' : '');
+    const d = document.createElement('div'); d.className = 'sub' + (st.box ? ' boxed' : ''); d.dataset.id = s.id; if (editing && editing.dataset.id === s.id) d.classList.add('editing'); d.title = t('Doble clic para editar');
     const blockH = (s.lines.length - 1) * lineH * g.lh + lineH;
     Object.assign(d.style, { left: g.x * k + 'px', top: top * k + 'px', height: blockH * k + 'px', width: '0px' });
     s.lines.forEach((line, i) => {
@@ -262,7 +273,7 @@ function renderOverlay() {
       }
       d.appendChild(l);
     });
-    d.addEventListener('mousedown', startDrag);
+    d.addEventListener('mousedown', startDrag); d.addEventListener('dblclick', inlineEdit);
     ov.appendChild(d);
   }
 }
@@ -281,12 +292,50 @@ function startDrag(e) {
   window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
 }
 
+let editing = null;
+function cleanEdit(text) { return text.split('\n').map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n'); }
+function inlineEdit(e) {
+  e.preventDefault(); e.stopPropagation(); if (editing) return;
+  const seg = state.segs.find(x => x.id === e.currentTarget.dataset.id); if (!seg) return;
+  const pl = $('#player'); const pr = pl.getBoundingClientRect(); const d = e.currentTarget;
+  const rs = [...d.children].map(x => x.getBoundingClientRect()); const cx = d.getBoundingClientRect().left;
+  const top = Math.min(...rs.map(r => r.top)); const span = Math.max(...rs.map(r => Math.max(cx - r.left, r.right - cx)));
+  const st = state.style; const [W, H] = dims(); const g = S.geometry(st, W, H); const k = vbox.sc || 1;
+  const v = $('#video'); v.pause();
+  const w = Math.min(pr.width - 16, Math.max(2 * span + 24, g.maxW * k + 24, 160)); const left = Math.max(8, Math.min(pr.width - w - 8, cx - pr.left - w / 2));
+  const ta = h('textarea', { className: 'inline-edit', spellcheck: true, title: t('Enter guarda · Shift+Enter nueva línea · Esc cancela') });
+  ta.value = seg.text; ta.dataset.id = seg.id;
+  Object.assign(ta.style, { transform: `translate(${left}px, ${Math.max(4, Math.min(pr.height - 40, top - pr.top - 6))}px)`, width: w + 'px', font: fontCss(st, g.fontPx * k), color: st.color, lineHeight: (g.fontPx * k * fontRatio(st)) + 'px' });
+  pl.appendChild(ta);
+  const fit = () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }; fit();
+  ta.focus(); ta.select();
+  const finish = (save) => {
+    if (editing !== ta) return; editing = null;
+    document.removeEventListener('mousedown', outside, true); ta.remove();
+    const txt = cleanEdit(ta.value);
+    if (save && txt && txt !== seg.text) {
+      pushUndo(); seg.text = txt; seg.words = null;
+      state.sel = sorted().indexOf(seg); renderSegs(); renderTimeline(); refreshDirty();
+    }
+    renderOverlay();
+  };
+  const outside = (ev) => { if (ev.target !== ta) finish(true); };
+  ta.addEventListener('input', fit);
+  ta.addEventListener('keydown', (ev) => {
+    ev.stopPropagation();
+    if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); finish(true); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); finish(false); }
+  });
+  ta.addEventListener('blur', () => finish(true));
+  editing = ta; renderOverlay(); document.addEventListener('mousedown', outside, true);
+}
 function renderTimeline() {
   const tl = $('#timeline'); const dur = state.info?.duration || $('#video').duration || 1;
   tl.querySelectorAll('.blk').forEach(b => b.remove());
   sorted().forEach((s, i) => {
     const b = document.createElement('div'); b.className = 'blk' + (i === state.sel ? ' sel' : '');
     b.style.left = (s.start / dur * 100) + '%'; b.style.width = Math.max(0.3, (s.end - s.start) / dur * 100) + '%'; b.textContent = s.text;
+    b.dataset.i = String(i); b.title = t('Clic para ir a este subtítulo');
     tl.appendChild(b);
   });
 }
@@ -402,7 +451,14 @@ function bind() {
   v.addEventListener('timeupdate', tick); v.addEventListener('seeked', tick); v.addEventListener('loadedmetadata', () => { tick(); renderTimeline(); });
   const loop = () => { if (!v.paused) tick(); requestAnimationFrame(loop); }; loop();
   const sk = $('#seek'); sk.oninput = () => { seeking = true; v.currentTime = (v.duration || 0) * sk.value / 1000; }; sk.onchange = () => seeking = false;
-  $('#timeline').onclick = (e) => { const r = e.currentTarget.getBoundingClientRect(); v.currentTime = (v.duration || 0) * (e.clientX - r.left) / r.width; };
+  const tl = $('#timeline'); let down = null;
+  tl.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
+  tl.addEventListener('click', (e) => {
+    const moved = down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4; down = null; if (moved) return;
+    const b = e.target.closest('.blk');
+    if (b) { jumpTo(+b.dataset.i); return; }
+    const r = tl.getBoundingClientRect(); v.currentTime = (v.duration || 0) * (e.clientX - r.left) / r.width;
+  });
   document.querySelectorAll('.tab').forEach(tab => tab.onclick = () => {
     document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === tab));
     document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab.dataset.tab));
@@ -439,11 +495,11 @@ async function init() {
   state.gpu = !!gpu; renderAbout();
   initProject();
   const cfg = await api.test.config();
-  if (cfg) (await import('./selftest.js')).selfTest(cfg, { state, S, $, api, openFile, syncStyleUI, renderSegs, renderOverlay, ensureMetrics, tick, burn, setUiLang, isDirty, snap, saveProject, newProject, loadProject, transcribe, sorted, resegmentAll, undo, translate, buildAss, fontRatio, BUILTIN_PRESETS });
+  if (cfg) (await import('./selftest.js')).selfTest(cfg, { state, S, $, api, openFile, syncStyleUI, renderSegs, renderOverlay, renderTimeline, jumpTo, ensureMetrics, tick, burn, setUiLang, isDirty, snap, saveProject, newProject, loadProject, transcribe, sorted, resegmentAll, undo, translate, buildAss, fontRatio, BUILTIN_PRESETS });
 }
 
 function renderAbout() { $('#aboutTxt').textContent = t('Subtitulador {v} · Whisper + Opus-MT (transformers.js) · ffmpeg + libass.', { v: APP_VERSION }) + t(state.gpu ? ' · GPU (WebGPU) disponible ✔' : ' · WebGPU no disponible: se usa CPU (WASM).'); }
-const APP_VERSION = '1.3.1';
+const APP_VERSION = '1.3.2';
 function applyUiLang() {
   const pref = state.settings.uiLang || 'auto';
   I18N.setLang(pref === 'auto' ? I18N.systemLang(navigator.language) : pref);
@@ -453,7 +509,7 @@ function applyUiLang() {
 function setUiLang(pref) {
   state.settings.uiLang = pref; saveStore(); applyUiLang();
   const sel = $('#statusTxt'); if (sel && !sel.textContent.trim()) sel.textContent = t('Listo.');
-  renderAbout(); renderPresets(); loadFonts(); renderSegs(); lastDirty = null; refreshDirty();
+  renderAbout(); renderPresets(); loadFonts(); renderSegs(); renderTimeline(); renderOverlay(); lastDirty = null; refreshDirty();
   if (!state.file) $('#fileName').textContent = t('Ningún archivo abierto — también podés arrastrarlo acá');
 }
 
