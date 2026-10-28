@@ -1,22 +1,20 @@
-// Lógica compartida de subtítulos: tiempos, SRT, ASS, estilos.
-// Se usa en el renderer (<script>) y en Node (require).
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.Subs = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
   const DEFAULT_STYLE = {
-    fontFamily: 'Poppins', fontSize: 6.5, /* % de la altura del video */
+    fontFamily: 'Poppins', fontSize: 6.5,
     color: '#FFFFFF', bold: true, italic: false,
-    outlineColor: '#000000', outlineWidth: 0.35, /* % altura */
+    outlineColor: '#000000', outlineWidth: 0.35,
     shadow: true, shadowColor: '#000000', shadowOpacity: 0.6, shadowOffset: 0.25,
-    shadowType: 'solid', /* solid | blur */ shadowBlur: 0.4, /* % altura */
-    lineHeight: 1.0, /* x alto de línea de la fuente */
+    shadowType: 'solid', shadowBlur: 0.4,
+    lineHeight: 1.0,
     box: false, boxColor: '#000000', boxOpacity: 0.6, boxPadding: 0.6,
-    position: 'bottom', /* bottom | middle | top | custom */
-    marginV: 6, /* % altura (bottom/top) */
-    offsetX: 0, offsetY: 0, /* % (desplazamiento extra) */
-    customX: 50, customY: 85, /* % (modo custom: ancla centro-abajo) */
-    maxWidth: 80, /* % del ancho */
+    position: 'bottom',
+    marginV: 6,
+    offsetX: 0, offsetY: 0,
+    customX: 50, customY: 85,
+    maxWidth: 80,
   };
 
   const pad = (n, l = 2) => String(n).padStart(l, '0');
@@ -28,7 +26,7 @@
     t = Math.max(0, t); const cs = Math.round(t * 100);
     return `${Math.floor(cs / 360000)}:${pad(Math.floor(cs / 6000) % 60)}:${pad(Math.floor(cs / 100) % 60)}.${pad(cs % 100)}`;
   }
-  function fmtClock(t) { // para la UI: 00:01:02.345
+  function fmtClock(t) {
     return fmtSrtTime(t).replace(',', '.');
   }
   function parseClock(s) {
@@ -52,16 +50,14 @@
     return out;
   }
 
-  // '#RRGGBB' + opacidad (0..1) -> &HAABBGGRR
   function assColor(hex, opacity = 1) {
     const h = hex.replace('#', '');
     const r = h.slice(0, 2), g = h.slice(2, 4), b = h.slice(4, 6);
     const a = Math.round((1 - opacity) * 255).toString(16).padStart(2, '0');
     return `&H${a}${b}${g}${r}`.toUpperCase();
   }
-  function escAss(t) { return t.replace(/\\/g, '\\\\').replace(/\{/g, '\\{').replace(/\}/g, '\\}'); }
+  function escAss(t) { return String(t).replace(/[\r\n]+/g, ' ').replace(/\\/g, '\\\u2060').replace(/\{/g, '\\{').replace(/\}/g, '\\}'); }
 
-  // Corta texto en líneas que no superen maxPx, usando measure(text)->px
   function wrap(text, maxPx, measure) {
     const words = String(text).replace(/\s+/g, ' ').trim().split(' ');
     const lines = []; let cur = '';
@@ -70,7 +66,6 @@
       if (cur && measure(cand) > maxPx) { lines.push(cur); cur = w; } else cur = cand;
     }
     if (cur) lines.push(cur);
-    // balanceo simple de 2 líneas
     if (lines.length === 2) {
       const all = words; let best = null;
       for (let k = 1; k < all.length; k++) {
@@ -84,7 +79,6 @@
     return lines.length ? lines : [''];
   }
 
-  // Geometría en píxeles del video (compartida entre preview y ASS)
   function geometry(style, W, H) {
     const px = v => v / 100 * H;
     const g = {
@@ -100,8 +94,6 @@
     return g;
   }
 
-  // Posición de cada línea (cada línea es su propio evento ASS => interlineado controlable).
-  // lineH = alto de línea de libass (= tamaño ASS). Devuelve [{an, x, y}] con el mismo ancla que la alineación.
   function linePositions(g, n, lineH) {
     const step = lineH * (g.lh || 1); const out = [];
     for (let i = 0; i < n; i++) {
@@ -114,14 +106,13 @@
     return out;
   }
 
-  // fontScale: tamaño ASS = px * fontScale (ASS mide alto ascender+descender, CSS mide em)
   function buildASS(segs, style, W, H, opts = {}) {
     const g = geometry(style, W, H);
     const assSize = g.fontPx * (opts.fontScale || 1);
     const back = style.box ? assColor(style.boxColor, style.boxOpacity) : assColor(style.shadowColor, style.shadowOpacity);
     const outlineCol = style.box ? assColor(style.boxColor, style.boxOpacity) : assColor(style.outlineColor, 1);
     const st = [
-      'Default', style.fontFamily, assSize.toFixed(2), assColor(style.color, 1), assColor(style.color, 1), outlineCol, back,
+      'Default', cleanFont(style.fontFamily) || 'Arial', assSize.toFixed(2), assColor(style.color, 1), assColor(style.color, 1), outlineCol, back,
       style.bold ? -1 : 0, style.italic ? -1 : 0, 0, 0, 100, 100, 0, 0, style.box ? 3 : 1,
       g.outline.toFixed(2), (style.box || g.blur ? 0 : g.shadow).toFixed(2), g.an, 0, 0, 0, 1,
     ].join(',');
@@ -132,7 +123,7 @@
       const lines = s.lines || [s.text]; const pos = linePositions(g, lines.length, assSize);
       lines.forEach((ln, i) => {
         const p = pos[i];
-        if (g.blur && !style.box && g.shadow >= 0) // sombra difuminada: capa inferior con el texto+borde en color de sombra, desplazada y con \blur
+        if (g.blur && !style.box && g.shadow >= 0)
           ev.push(`Dialogue: 0,${T(s)},Default,,0,0,0,,{\\an${p.an}\\pos(${(p.x + g.shadow).toFixed(1)},${(p.y + g.shadow).toFixed(1)})\\1c&H${shCol}&\\3c&H${shCol}&\\1a&H${shA}&\\3a&H${shA}&\\shad0\\blur${g.blur.toFixed(2)}}${escAss(ln)}`);
         ev.push(`Dialogue: 1,${T(s)},Default,,0,0,0,,{\\an${p.an}\\pos(${p.x.toFixed(1)},${p.y.toFixed(1)})}${escAss(ln)}`);
       });
@@ -156,25 +147,6 @@ ${ev.join('\n')}
 `;
   }
 
-  // Parte segmentos largos de Whisper en subtítulos legibles (máx. 2 líneas)
-  function splitLong(segs, maxChars = 84, maxDur = 6) {
-    const out = [];
-    for (const s of segs) {
-      const text = s.text.trim(); if (!text) continue;
-      const dur = s.end - s.start;
-      if (text.length <= maxChars && dur <= maxDur + 1) { out.push({ ...s, text }); continue; }
-      const words = text.split(/\s+/); const n = Math.max(Math.ceil(text.length / maxChars), Math.ceil(dur / maxDur));
-      const per = Math.ceil(words.length / n); let t = s.start; const total = text.length;
-      for (let i = 0; i < words.length; i += per) {
-        const chunk = words.slice(i, i + per).join(' ');
-        const d = dur * (chunk.length + 1) / (total + 1);
-        out.push({ start: t, end: Math.min(s.end, t + d), text: chunk }); t += d;
-      }
-    }
-    return out;
-  }
-
-  // Detección simple de idioma por palabras frecuentes
   function guessLang(text) {
     const w = (text.toLowerCase().match(/[a-záéíóúñü']+/g) || []);
     const es = new Set('el la los las de que y en un una por con para es no se lo al del como pero más su sus le ya muy está fue era'.split(' '));
@@ -184,7 +156,6 @@ ${ev.join('\n')}
     return s > e ? 'es' : 'en';
   }
 
-  // Palabras con tiempo estimado: reparte el tramo [start,end] según el largo (caracteres) de cada palabra
   function spreadWords(text, start, end) {
     const ws = String(text).trim().split(/\s+/).filter(Boolean); if (!ws.length) return [];
     const tot = ws.reduce((a, w) => a + w.length + 1, 0); let t = start; const d = Math.max(0.01, end - start);
@@ -194,8 +165,6 @@ ${ev.join('\n')}
     return [...segs].sort((a, b) => a.start - b.start).flatMap(s => s.words && s.words.length ? s.words : spreadWords(s.text, s.start, s.end));
   }
   const ENDP = /[.!?…;:]["»”')\]]*$/, COMMA = /[,—–]["»”')\]]*$/;
-  // Arma cues a partir de palabras. maxWords=0 => sin límite (solo corta por puntuación/pausas/2 líneas).
-  // fits(text) opcional: false si el texto no entra en las líneas permitidas.
   function resegment(words, { maxWords = 7, fits = null, minDur = 0.7, maxDur = 7 } = {}) {
     const lim = maxWords > 0 ? maxWords : 40; const cues = []; let cur = [];
     const flush = () => { if (cur.length) cues.push(cur); cur = []; };
@@ -206,7 +175,6 @@ ${ev.join('\n')}
       cur.push(w);
       const n = cur.length; const t = w.text;
       if (n >= lim) {
-        // preferir cortar en la última puntuación de la segunda mitad del cue
         let k = -1; for (let j = n - 2; j >= Math.ceil(lim * 0.5) - 1; j--) if (ENDP.test(cur[j].text) || COMMA.test(cur[j].text)) { k = j; break; }
         if (k >= 0) { const rest = cur.slice(k + 1); cur = cur.slice(0, k + 1); flush(); cur = rest; } else flush();
       }
@@ -215,9 +183,7 @@ ${ev.join('\n')}
       else if (ENDP.test(t) && maxWords <= 0) flush();
     }
     flush();
-    // rebalanceo: un cue de 1 palabra después de uno lleno toma una palabra del anterior (si no hay puntuación entre medio)
     for (let i = 1; i < cues.length; i++) if (cues[i].length === 1 && cues[i - 1].length >= 3 && !ENDP.test(cues[i - 1][cues[i - 1].length - 1].text)) cues[i].unshift(cues[i - 1].pop());
-    // evitar cue final huérfano de 1 palabra: unirlo al anterior si entra
     const out = cues.map(c => ({ start: c[0].start, end: c[c.length - 1].end, text: c.map(x => x.text).join(' '), words: c }));
     for (let i = 0; i < out.length; i++) {
       const c = out[i], n = out[i + 1];
@@ -227,7 +193,6 @@ ${ev.join('\n')}
     }
     return out;
   }
-  // Agrupa cues consecutivos en oraciones (para traducir con contexto)
   function groupSentences(segs) {
     const out = []; let cur = null;
     for (const s of [...segs].sort((a, b) => a.start - b.start)) {
@@ -240,5 +205,56 @@ ${ev.join('\n')}
     return out.map(g => ({ start: g.start, end: g.end, text: g.parts.map(p => p.text.trim()).join(' '), parts: g.parts }));
   }
 
-  return { linePositions, spreadWords, wordsFromSegs, resegment, groupSentences, DEFAULT_STYLE, fmtSrtTime, fmtAssTime, fmtClock, parseClock, toSRT, parseSRT, assColor, wrap, geometry, buildASS, splitLong, guessLang };
+  const own = (o, k) => o !== null && typeof o === 'object' && Object.prototype.hasOwnProperty.call(o, k);
+  const RANGES = { fontSize: [1, 30], outlineWidth: [0, 5], shadowOpacity: [0, 1], shadowOffset: [0, 5], shadowBlur: [0, 5], lineHeight: [0.5, 3], boxOpacity: [0, 1], boxPadding: [0, 5], marginV: [0, 50], offsetX: [-50, 50], offsetY: [-50, 50], customX: [0, 100], customY: [0, 100], maxWidth: [10, 100] };
+  const ENUMS = { position: ['bottom', 'middle', 'top', 'custom'], shadowType: ['solid', 'blur'] };
+  const CHOICES = { model: ['tiny', 'base', 'small', 'turbo'], device: ['auto', 'webgpu', 'wasm'], lang: ['auto', 'es', 'en'], uiLang: ['auto', 'es', 'en'], codec: ['h264', 'hevc', 'prores'], preset: ['medium', 'slow', 'slower'], overlay: ['alpha', 'green', 'black'] };
+  const num = (v, lo, hi, d) => { const n = Number(v); return typeof v !== 'boolean' && v !== null && v !== '' && Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+  const pick = (v, list, d) => list.includes(v) ? v : d;
+  const cleanFont = (v) => typeof v === 'string' ? v.replace(/[\x00-\x1f\x7f,{}\\"';<>]/g, '').trim().slice(0, 80) : '';
+  function cleanStyle(o) {
+    const st = { ...DEFAULT_STYLE };
+    for (const k of Object.keys(DEFAULT_STYLE)) {
+      if (!own(o, k)) continue;
+      const v = o[k]; const d = DEFAULT_STYLE[k];
+      if (Object.hasOwn(RANGES, k)) st[k] = num(v, RANGES[k][0], RANGES[k][1], d);
+      else if (ENUMS[k]) st[k] = pick(v, ENUMS[k], d);
+      else if (typeof d === 'boolean') st[k] = v === true;
+      else if (k === 'fontFamily') st[k] = cleanFont(v) || d;
+      else if (/Color$|^color$/.test(k)) st[k] = typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v.toUpperCase() : d;
+    }
+    return st;
+  }
+  function cleanSettings(o, base) {
+    const s = { ...base };
+    for (const k of ['model', 'device', 'lang', 'uiLang']) if (own(o, k)) s[k] = pick(o[k], CHOICES[k], s[k]);
+    if (own(o, 'maxWords')) s.maxWords = Math.round(num(o.maxWords, 0, 15, s.maxWords));
+    if (own(o, 'maxLines')) s.maxLines = Math.round(num(o.maxLines, 1, 2, s.maxLines));
+    return s;
+  }
+  function cleanExport(o) {
+    if (!o || typeof o !== 'object') return null;
+    return { codec: pick(o.codec, CHOICES.codec, 'h264'), crf: Math.round(num(o.crf, 10, 24, 15)), preset: pick(o.preset, CHOICES.preset, 'slow'), overlay: pick(o.overlay, CHOICES.overlay, 'alpha') };
+  }
+  const cleanText = (v, max) => typeof v === 'string' ? v.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '').slice(0, max) : '';
+  const cleanTime = (v) => num(v, 0, 864000, NaN);
+  function cleanSegs(arr) {
+    if (!Array.isArray(arr)) return [];
+    const out = [];
+    for (const s of arr.slice(0, 20000)) {
+      if (!s || typeof s !== 'object') continue;
+      const start = cleanTime(s.start), end = cleanTime(s.end);
+      if (Number.isNaN(start) || Number.isNaN(end)) continue;
+      const seg = { id: typeof s.id === 'string' && /^[\w-]{1,64}$/.test(s.id) ? s.id : null, start, end: Math.max(end, start), text: cleanText(s.text, 2000) };
+      if (Array.isArray(s.words)) {
+        const w = s.words.slice(0, 500).map(x => x && typeof x === 'object' ? { text: cleanText(x.text, 200), start: cleanTime(x.start), end: cleanTime(x.end) } : null)
+          .filter(x => x && x.text && !Number.isNaN(x.start) && !Number.isNaN(x.end));
+        if (w.length) seg.words = w;
+      }
+      out.push(seg);
+    }
+    return out;
+  }
+
+  return { linePositions, spreadWords, wordsFromSegs, resegment, groupSentences, DEFAULT_STYLE, fmtSrtTime, fmtAssTime, fmtClock, parseClock, toSRT, parseSRT, assColor, wrap, geometry, buildASS, guessLang, cleanStyle, cleanSettings, cleanSegs, cleanExport, CHOICES };
 });

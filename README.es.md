@@ -38,18 +38,35 @@ Bajá la última versión desde **[Releases](https://github.com/adolfosmrr/subti
      ```
 3. La primera transcripción descarga el modelo de Whisper (Ajustes › Modelo; "Small" ≈ 500 MB). Los modelos quedan en `~/Library/Application Support/Subtitulador`.
 
+## Verificá la descarga
+Bajá Subtitulador solamente desde la página de **[Releases](https://github.com/adolfosmrr/subtitulador/releases)** de este repositorio. La app no tiene actualizador automático, así que nadie puede meter código en tu Mac a través de ella: las versiones nuevas las instalás vos, desde acá.
+
+Cada versión publica el SHA-256 de cada zip en `SHA256SUMS.txt`. Antes de abrir la app, verificalo en la Terminal:
+```bash
+cd ~/Downloads
+shasum -a 256 Subtitulador-*-mac-*.zip
+```
+El valor tiene que coincidir exactamente con el de `SHA256SUMS.txt`. Si no coincide, borrá el archivo y avisá (ver [SECURITY.md](SECURITY.md)).
+
+## Privacidad y seguridad
+- Todo corre en tu computadora. La única conexión es la descarga única de los modelos desde `huggingface.co`, fijados a revisiones exactas.
+- La ventana no puede navegar a otras páginas ni abrir ventanas, no tiene acceso a Node.js (renderer aislado y en sandbox) y usa una política de contenido (CSP) estricta.
+- El ffmpeg incluido es una versión fija verificada por SHA-256 al compilar, y solo lee formatos de medios locales (sin red ni listas de reproducción).
+- Los proyectos (`.subtitulador`) se validan campo por campo al abrirlos.
+- Los "fuses" de Electron están endurecidos: sin `ELECTRON_RUN_AS_NODE`, sin `NODE_OPTIONS`, sin flags de inspector, y el código solo se carga desde su archivo con verificación de integridad.
+
 ## Cómo funciona
 - App **Electron**. Whisper y Opus-MT corren con **[transformers.js](https://github.com/huggingface/transformers.js)** (ONNX Runtime Web, WebGPU o WASM) en un worker: nada sale de tu computadora salvo la descarga única de los modelos desde Hugging Face.
 - Los subtítulos se renderizan con **ffmpeg + libass** (formato ASS). La vista previa reproduce las métricas de libass (métricas OS/2 de la fuente, posición de cada línea, difuminado de la sombra), así que lo que ves es lo que sale.
 
 ## Compilar desde el código
-Requisitos: Node.js 20+ y npm.
+Requisitos: Node.js 20+ y npm. `npm start` abre la app en modo desarrollo (antes descarga el runtime de transformers.js y ffmpeg); `npm run dist:mac` genera `dist/Subtitulador-<ver>-mac-{arm64,x64}.zip`.
 ```bash
 git clone https://github.com/adolfosmrr/subtitulador.git
 cd subtitulador
 npm install
-npm start               # modo desarrollo (descarga runtime de transformers.js y ffmpeg)
-npm run dist:mac        # genera dist/Subtitulador-<ver>-mac-{arm64,x64}.zip
+npm start
+npm run dist:mac
 ```
 Para firmar ad-hoc (necesario en Apple Silicon) instalá [rcodesign](https://github.com/indygreg/apple-platform-rs) o definí `RCODESIGN=/ruta/a/rcodesign`.
 

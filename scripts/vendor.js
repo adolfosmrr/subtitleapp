@@ -1,4 +1,3 @@
-// Copia transformers.js + runtime ONNX (WASM) al renderer, para que funcione offline.
 const fs = require('fs'), path = require('path');
 const root = path.join(__dirname, '..'), out = path.join(root, 'src/renderer/vendor');
 fs.mkdirSync(out, { recursive: true });

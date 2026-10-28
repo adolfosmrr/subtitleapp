@@ -1,17 +1,23 @@
-// Worker de IA: Whisper (transcripción) y Opus-MT (traducción) con transformers.js. 100% local.
 import { pipeline, env, Tensor } from './vendor/transformers.min.js';
 
 env.allowLocalModels = false;
-env.useBrowserCache = true; // cache persistente => offline después de la 1ª descarga
+env.allowRemoteModels = true;
+env.remoteHost = 'https://huggingface.co/';
+env.remotePathTemplate = '{model}/resolve/{revision}/';
+env.useBrowserCache = true;
 env.backends.onnx.wasm.wasmPaths = new URL('./vendor/', import.meta.url).href;
 env.backends.onnx.wasm.numThreads = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
 
-export const MODELS = {
-  // variantes _timestamped: incluyen cross-attention => timestamps reales por palabra
-  tiny: 'onnx-community/whisper-tiny_timestamped', base: 'onnx-community/whisper-base_timestamped',
-  small: 'onnx-community/whisper-small_timestamped', turbo: 'onnx-community/whisper-large-v3-turbo_timestamped',
+const MODELS = {
+  tiny: ['onnx-community/whisper-tiny_timestamped', '517244293732ee2d58139af5814231b7e6830a0d'],
+  base: ['onnx-community/whisper-base_timestamped', '608c49e61301901684bc36cac8f74b95ff6b5a8e'],
+  small: ['onnx-community/whisper-small_timestamped', '65caa70f294b46e1c33ff820aae6b16d048ab818'],
+  turbo: ['onnx-community/whisper-large-v3-turbo_timestamped', 'b3f77bf9a8c4d5ea3415827033d1ffea7955fd9a'],
 };
-const TR = { 'en-es': 'Xenova/opus-mt-en-es', 'es-en': 'Xenova/opus-mt-es-en' };
+const TR = {
+  'en-es': ['Xenova/opus-mt-en-es', '4b002a4c7edd54a7ced58877258b87f7efd3f892'],
+  'es-en': ['Xenova/opus-mt-es-en', 'eadfd7c658a9d8929ac3b8e996b68a68e2c7d480'],
+};
 const cache = new Map();
 
 async function pickDevice(pref) {
@@ -31,22 +37,24 @@ function progressCb(stage) {
   };
 }
 
-async function getPipe(task, model, device, dtype, stage) {
+async function getPipe(task, spec, device, dtype, stage) {
+  if (!spec) throw new Error('Modelo no permitido');
+  const [model, revision] = spec;
   const key = `${task}|${model}|${device}|${JSON.stringify(dtype)}`;
   if (!cache.has(key)) {
-    // liberar modelos de Whisper anteriores para no duplicar RAM
     for (const [k, v] of cache) if (k.startsWith(task) && k !== key) { try { await (await v).dispose(); } catch {} cache.delete(k); }
-    cache.set(key, pipeline(task, model, { device, dtype, progress_callback: progressCb(stage) }).catch(e => { cache.delete(key); throw e; }));
+    cache.set(key, pipeline(task, model, { revision, device, dtype, progress_callback: progressCb(stage) }).catch(e => { cache.delete(key); throw e; }));
   }
   return cache.get(key);
 }
 
 async function transcribe({ audio, lang, model, device: pref }) {
+  if (!(audio instanceof Float32Array)) throw new Error('Entrada inválida');
   const device = await pickDevice(pref);
   const dtype = device === 'webgpu' ? { encoder_model: 'fp32', decoder_model_merged: 'q4' } : { encoder_model: 'q8', decoder_model_merged: 'q8' };
   postMessage({ type: 'status', k: 'Cargando modelo Whisper {m} ({d})…', p: { m: model, d: device === 'webgpu' ? 'GPU / WebGPU' : 'CPU / WASM' }, device });
   let asr;
-  try { asr = await getPipe('automatic-speech-recognition', MODELS[model] || model, device, dtype, 'modelo'); }
+  try { asr = await getPipe('automatic-speech-recognition', Object.hasOwn(MODELS, model) ? MODELS[model] : null, device, dtype, 'modelo'); }
   catch (e) { if (device === 'webgpu') { postMessage({ type: 'status', k: 'WebGPU falló, uso CPU (WASM)…' }); return transcribe({ audio, lang, model, device: 'wasm' }); } throw e; }
   if (!lang || lang === 'auto') {
     postMessage({ type: 'status', k: 'Detectando idioma…', device });
@@ -86,8 +94,6 @@ async function transcribe({ audio, lang, model, device: pref }) {
   return { segments, words: wordMode ? words : null, device, seconds: total, lang };
 }
 
-// Whisper: después de <|startoftranscript|> el modelo predice el token de idioma. Comparamos <|en|> vs <|es|>
-// sobre la ventana de 30 s con más energía (evita silencios iniciales).
 async function detectLang(asr, audio) {
   const W = 30 * 16000; let best = 0, bestE = -1;
   for (let off = 0; off < Math.max(1, audio.length - W / 2); off += W) {
@@ -107,10 +113,11 @@ async function detectLang(asr, audio) {
 }
 
 async function translate({ texts, from, to }) {
-  const pipe = await getPipe('translation', TR[`${from}-${to}`], 'wasm', 'q8', 'traductor');
+  if (!Array.isArray(texts)) throw new Error('Entrada inválida');
+  const pipe = await getPipe('translation', Object.hasOwn(TR, `${from}-${to}`) ? TR[`${from}-${to}`] : null, 'wasm', 'q8', 'traductor');
   const out = [];
   for (let i = 0; i < texts.length; i++) {
-    const t = texts[i].trim();
+    const t = String(texts[i] ?? '').trim();
     if (!t) { out.push(''); continue; }
     const r = await pipe(t, { max_new_tokens: 256 });
     out.push(r[0].translation_text);

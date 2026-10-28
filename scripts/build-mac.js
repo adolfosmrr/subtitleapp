@@ -1,6 +1,5 @@
-// Build para macOS desde Linux: electron-builder (dir) → firma ad-hoc con rcodesign → zip.
 const { execFileSync } = require('child_process'); const fs = require('fs'); const path = require('path');
-const root = path.join(__dirname, '..'); const RCS = process.env.RCODESIGN || 'rcodesign'; // https://github.com/indygreg/apple-platform-rs (opcional)
+const root = path.join(__dirname, '..'); const RCS = process.env.RCODESIGN || 'rcodesign';
 const arches = (process.env.ARCHES || 'arm64,x64').split(',');
 const ver = require('../package.json').version;
 execFileSync(process.execPath, [path.join(__dirname, 'fetch-ffmpeg.js'), ...arches.map(a => `darwin-${a}`)], { stdio: 'inherit' });
@@ -14,9 +13,8 @@ for (const arch of arches) {
   fs.chmodSync(path.join(app, 'Contents/Resources/bin/ffmpeg'), 0o755);
   let hasRcs = true; try { execFileSync(RCS, ['--version'], { stdio: 'ignore' }); } catch { hasRcs = false; }
   if (hasRcs) {
-    // firma ad-hoc (sin Apple ID): necesaria para que Apple Silicon ejecute los binarios
     execFileSync(RCS, ['sign', app], { stdio: 'inherit' });
-  } else console.warn('rcodesign no encontrado: el .app queda sin firma ad-hoc');
+  } else throw new Error('rcodesign no encontrado');
   const zip = path.join(root, 'dist', `Subtitulador-${ver}-mac-${arch}.zip`);
   execFileSync('python3', [path.join(__dirname, 'zipapp.py'), app, zip], { stdio: 'inherit' });
 }

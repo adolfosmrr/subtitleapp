@@ -42,23 +42,40 @@ Not sure? Apple menu  › *About This Mac*: "Chip Apple M…" means Apple Silico
      ```
 3. The first transcription downloads the Whisper model (Settings › Model; "Small" ≈ 500 MB). Models are cached in `~/Library/Application Support/Subtitulador`.
 
+## Verify your download
+Only download Subtitulador from this repository's **[Releases](https://github.com/adolfosmrr/subtitulador/releases)** page. The app has no auto-updater, so nobody can push code to your Mac through it: you install new versions yourself, from here.
+
+Every release lists the SHA-256 of each zip in `SHA256SUMS.txt`. Before opening the app, check it in Terminal:
+```bash
+cd ~/Downloads
+shasum -a 256 Subtitulador-*-mac-*.zip
+```
+The value must match the line in `SHA256SUMS.txt` exactly. If it doesn't, delete the file and report it (see [SECURITY.md](SECURITY.md)).
+
+## Privacy & security
+- Everything runs locally. The only network access is the one-time model download from `huggingface.co`, pinned to fixed model revisions.
+- The window can't navigate away or open other pages, has no Node.js access (sandboxed renderer, context isolation), and uses a strict Content Security Policy.
+- The bundled ffmpeg is a pinned build verified by SHA-256 at build time. It only reads local media formats (no network or playlist inputs).
+- Project files (`.subtitulador`) are validated field by field when opened.
+- Electron fuses are hardened: no `ELECTRON_RUN_AS_NODE`, no `NODE_OPTIONS`, no inspector flags, and the app code is only loaded from its integrity-checked archive.
+
 ## How it works
 - **Electron** app. Whisper and Opus-MT run with **[transformers.js](https://github.com/huggingface/transformers.js)** (ONNX Runtime Web, WebGPU or WASM) in a worker — nothing leaves your computer except the one-time model download from Hugging Face.
 - Subtitles are rendered with **ffmpeg + libass** (ASS format). The preview reproduces libass metrics (font OS/2 metrics, line positions, shadow blur) so what you see is what you get.
 - Line wrapping is computed in the app and every line is written as its own positioned ASS event, which makes line height controllable and identical in preview and render.
 
 ## Build from source
-Requirements: Node.js 20+, npm.
+Requirements: Node.js 20+, npm. `npm start` runs the app in development mode (it fetches the transformers.js runtime and ffmpeg first); `npm run dist:mac` builds `dist/Subtitulador-<ver>-mac-{arm64,x64}.zip`.
 ```bash
 git clone https://github.com/adolfosmrr/subtitulador.git
 cd subtitulador
 npm install
-npm start               # dev run (fetches transformers.js runtime files and ffmpeg)
-npm run dist:mac        # builds dist/Subtitulador-<ver>-mac-{arm64,x64}.zip
+npm start
+npm run dist:mac
 ```
 - `scripts/fetch-ffmpeg.js` downloads static ffmpeg binaries (ffmpeg-static b6.0) into `vendor-bin/` and verifies their SHA-256.
 - macOS builds can be made on Linux; for an ad-hoc signature (needed on Apple Silicon) install [rcodesign](https://github.com/indygreg/apple-platform-rs) or set `RCODESIGN=/path/to/rcodesign`.
-- `npm run selftest` runs an end-to-end test under `xvfb` on Linux (needs sample videos in `test/samples/`, not included).
+- `npm test` (transcribe → translate → style → burn) and `npm run test:compare` (preview vs. render, overlays, projects) run the real app under `xvfb` on Linux. They need sample videos in `test/samples/` (not included).
 
 ## Credits & licenses
 Subtitulador is © 2026 Adolfo Mesen, released under the [MIT License](LICENSE).

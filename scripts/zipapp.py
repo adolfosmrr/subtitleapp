@@ -1,4 +1,3 @@
-# Zip de un .app preservando symlinks y permisos (equivalente a `ditto -c -k --keepParent`)
 import os, sys, zipfile, stat
 src, out = sys.argv[1], sys.argv[2]
 base = os.path.dirname(src.rstrip('/'))

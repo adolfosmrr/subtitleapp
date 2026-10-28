@@ -1,25 +1,20 @@
-# dependencias y builds
 node_modules/
 dist/
 staging/
 out/
 *.zip
 *.dmg
-# generados por scripts/vendor.js y scripts/fetch-ffmpeg.js
 src/renderer/vendor/
 vendor-bin/
-# cachés de modelos / temporales
 .cache/
 models/
 *.onnx
-# medios de prueba (pesados / con derechos) y salidas de test
 test/samples/
 test/out/
 *.mp4
 *.mov
 *.mkv
 *.wav
-# varios
 .DS_Store
 *.log
 .env

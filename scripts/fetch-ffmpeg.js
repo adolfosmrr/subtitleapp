@@ -1,5 +1,3 @@
-// Descarga los binarios estáticos de ffmpeg (ffmpeg-static b6.0) a vendor-bin/ y verifica su SHA-256.
-// Uso: node scripts/fetch-ffmpeg.js [darwin-arm64 darwin-x64 linux-x64]   (sin args: la plataforma actual + ambas de mac)
 const fs = require('fs'); const path = require('path'); const zlib = require('zlib'); const crypto = require('crypto');
 const BASE = 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/';
 const SHA = {

@@ -1,6 +1,11 @@
-// Subtitulador — lógica de la interfaz
 const S = window.Subs; const api = window.api; const I18N = window.I18N; const t = I18N.t;
 const $ = (s) => document.querySelector(s);
+function h(tag, props, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) if (k === 'dataset') Object.assign(el.dataset, v); else el[k] = v;
+  el.append(...children);
+  return el;
+}
 const BUNDLED = ['Poppins', 'Lato', 'Anton', 'Bebas Neue', 'Lobster', 'Permanent Marker'];
 const FALLBACK_SYS = ['Helvetica Neue', 'Helvetica', 'Arial', 'Avenir Next', 'Futura', 'Gill Sans', 'Georgia', 'Times New Roman', 'Verdana', 'Trebuchet MS', 'Impact', 'Menlo'];
 
@@ -11,12 +16,11 @@ const state = {
 };
 document.body.classList.add('platform-' + api.platform);
 
-// ---------- utilidades UI ----------
-function status(t) { $('#statusTxt').textContent = t; }
+function status(msg) { $('#statusTxt').textContent = msg; }
 function progress(p, txt) {
   $('#progWrap').hidden = p == null; $('#progBar').style.width = ((p || 0) * 100).toFixed(1) + '%'; $('#progTxt').textContent = txt || '';
 }
-let toastT; function toast(msg, err) { const t = $('#toast'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : ''); t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, err ? 7000 : 3500); }
+let toastT; function toast(msg, err) { const el = $('#toast'); el.textContent = msg; el.className = 'toast' + (err ? ' err' : ''); el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, err ? 7000 : 3500); }
 const mb = (b) => (b / 1048576).toFixed(0) + ' MB';
 function pushUndo() { state.undo.push(JSON.stringify(state.segs)); if (state.undo.length > 100) state.undo.shift(); }
 function undo() { if (!state.undo.length) return; state.segs = JSON.parse(state.undo.pop()); renderSegs(); renderOverlay(); }
@@ -30,7 +34,6 @@ function setBusy(b) {
   $('#btnSrt').disabled = !hasSegs; $('#btnAss').disabled = !hasSegs;
 }
 
-// ---------- worker IA ----------
 const worker = new Worker(new URL('./ml-worker.js', import.meta.url), { type: 'module' });
 const pending = new Map(); let reqId = 0;
 worker.onmessage = (e) => {
@@ -45,73 +48,68 @@ worker.onmessage = (e) => {
 };
 function ml(type, payload, transfer) { const id = ++reqId; return new Promise((res, rej) => { pending.set(id, { res, rej }); worker.postMessage({ id, type, payload }, transfer || []); }); }
 
-// ---------- medición de fuentes (para que preview == libass) ----------
 const cvs = document.createElement('canvas').getContext('2d');
 function fontCss(st, px) { return `${st.italic ? 'italic ' : ''}${st.bold ? '700 ' : '400 '}${px}px "${st.fontFamily}"`; }
-// libass usa (ascender+descender) como "tamaño"; CSS usa el em. Devuelve ratio alto/em.
-// libass usa usWinAscent+usWinDescent (tabla OS/2) para el tamaño. Lo leemos del archivo de la fuente.
 const BUNDLED_FILES = { 'Poppins': ['Poppins-Regular', 'Poppins-Bold', 'Poppins-Italic', 'Poppins-BoldItalic'], 'Lato': ['Lato-Regular', 'Lato-Bold', 'Lato-Italic', 'Lato-BoldItalic'],
   'Anton': ['Anton-Regular'], 'Bebas Neue': ['BebasNeue-Regular'], 'Lobster': ['Lobster-Regular'], 'Permanent Marker': ['PermanentMarker-Regular'] };
 const metricCache = new Map();
-function parseWinRatio(buf) {
+const metricKey = (st) => `${st.fontFamily}|${st.bold}|${st.italic}`;
+function parseWinMetrics(buf) {
   const dv = new DataView(buf); let base = 0;
-  if (dv.getUint32(0) === 0x74746366) base = dv.getUint32(12); // 'ttcf' → primera fuente
-  const n = dv.getUint16(base + 4); const t = {};
-  for (let i = 0; i < n; i++) { const o = base + 12 + i * 16; t[String.fromCharCode(dv.getUint8(o), dv.getUint8(o + 1), dv.getUint8(o + 2), dv.getUint8(o + 3))] = dv.getUint32(o + 8); }
-  const upm = dv.getUint16(t.head + 18);
-  if (t['OS/2'] != null) { const a = dv.getUint16(t['OS/2'] + 74), d = dv.getUint16(t['OS/2'] + 76); if (a + d) { parseWinRatio.asc = a / upm; return (a + d) / upm; } }
-  if (t.hhea != null) { parseWinRatio.asc = dv.getInt16(t.hhea + 4) / upm; } if (t.hhea != null) return (dv.getInt16(t.hhea + 4) - dv.getInt16(t.hhea + 6)) / upm;
+  if (dv.getUint32(0) === 0x74746366) base = dv.getUint32(12);
+  const n = dv.getUint16(base + 4); const tb = {};
+  for (let i = 0; i < n; i++) { const o = base + 12 + i * 16; tb[String.fromCharCode(dv.getUint8(o), dv.getUint8(o + 1), dv.getUint8(o + 2), dv.getUint8(o + 3))] = dv.getUint32(o + 8); }
+  const upm = dv.getUint16(tb.head + 18);
+  if (tb['OS/2'] != null) { const a = dv.getUint16(tb['OS/2'] + 74), d = dv.getUint16(tb['OS/2'] + 76); if (a + d) return { ratio: (a + d) / upm, asc: a / upm }; }
+  if (tb.hhea != null) { const a = dv.getInt16(tb.hhea + 4), d = dv.getInt16(tb.hhea + 6); return { ratio: (a - d) / upm, asc: a / upm }; }
   return null;
 }
 async function ensureMetrics(st) {
-  const key = `${st.fontFamily}|${st.bold}|${st.italic}`; if (metricCache.has(key)) return metricCache.get(key);
+  const key = metricKey(st); if (metricCache.has(key)) return metricCache.get(key);
   let r = null;
   try {
-    const files = BUNDLED_FILES[st.fontFamily];
+    const files = Object.hasOwn(BUNDLED_FILES, st.fontFamily) ? BUNDLED_FILES[st.fontFamily] : null;
     if (files) {
       const pick = files.length === 4 ? files[(st.bold ? 1 : 0) + (st.italic ? 2 : 0)] : files[0];
-      r = parseWinRatio(await (await fetch(`/fonts/${pick}.ttf`)).arrayBuffer());
+      r = parseWinMetrics(await (await fetch(`/fonts/${pick}.ttf`)).arrayBuffer());
     } else if (state.localFonts) {
       const cands = state.localFonts.filter(f => f.family === st.fontFamily);
       const want = (st.bold ? 'bold' : '') + (st.italic ? 'italic' : '');
       const f = cands.find(f => f.style.toLowerCase().replace(/\s|oblique/g, m => m === 'oblique' ? 'italic' : '') === (want || 'regular')) || cands[0];
-      if (f) r = parseWinRatio(await (await f.blob()).arrayBuffer());
+      if (f) r = parseWinMetrics(await (await f.blob()).arrayBuffer());
     }
   } catch (e) { console.warn('métricas', e); }
-  if (r) ascCache.set(key, parseWinRatio.asc); metricCache.set(key, r); return r;
+  metricCache.set(key, r); return r;
 }
-// Desplazamiento vertical (en em) entre la línea base de libass (winAscent) y la de CSS (hhea/typo centrado en el line-height)
-const ascCache = new Map();
 function baselineShift(st, ratio) {
-  const asc = ascCache.get(`${st.fontFamily}|${st.bold}|${st.italic}`); if (asc == null) return 0;
+  const m0 = metricCache.get(metricKey(st)); if (!m0) return 0;
   cvs.font = fontCss(st, 100); const m = cvs.measureText('Hg');
   const A = m.fontBoundingBoxAscent / 100, D = m.fontBoundingBoxDescent / 100;
-  return asc - ((ratio - (A + D)) / 2 + A);
+  return m0.asc - ((ratio - (A + D)) / 2 + A);
 }
 function fontRatio(st) {
-  const k = `${st.fontFamily}|${st.bold}|${st.italic}`;
-  if (metricCache.get(k)) return metricCache.get(k);
+  const k = metricKey(st); const known = metricCache.get(k);
+  if (known) return known.ratio;
   if (!metricCache.has(k)) ensureMetrics(st).then(() => renderOverlay());
   cvs.font = fontCss(st, 100); const m = cvs.measureText('Hg');
   const r = (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent) / 100;
   return r > 0.5 && r < 3 ? r : 1.2;
 }
-function measureFn(st, px) { cvs.font = fontCss(st, px); return (t) => cvs.measureText(t).width; }
+function measureFn(st, px) { cvs.font = fontCss(st, px); return (txt) => cvs.measureText(txt).width; }
 function layoutSegs(segs, st, W, H) {
   const g = S.geometry(st, W, H); const meas = measureFn(st, g.fontPx);
-  const pad = st.box ? g.outline * 2 : g.outline * 2;
-  return segs.map(s => ({ ...s, lines: s.text.split(/\n/).flatMap(p => S.wrap(p, g.maxW - pad, meas)) }));
+  return segs.map(s => ({ ...s, lines: s.text.split(/\n/).flatMap(p => S.wrap(p, g.maxW - g.outline * 2, meas)) }));
 }
 function dims() { const i = state.info; return i && i.width ? [i.width, i.height] : [1920, 1080]; }
 function buildAss() { const [W, H] = dims(); return S.buildASS(layoutSegs(sorted(), state.style, W, H), state.style, W, H, { fontScale: fontRatio(state.style) }); }
 const sorted = () => [...state.segs].sort((a, b) => a.start - b.start);
 
-// ---------- abrir archivo ----------
 async function openFile(p) {
   if (!p) return;
   if (/\.subtitulador$/i.test(p)) return loadProject(p);
   status(t('Analizando archivo…'));
-  const info = await api.probe(p);
+  let info;
+  try { info = await api.probe(p); } catch { toast(t('No pude leer ese archivo.'), true); return; }
   if (!info.hasAudio && !info.hasVideo) { toast(t('No pude leer ese archivo.'), true); return; }
   state.file = p; state.info = info;
   $('#fileName').textContent = p.split(/[\\/]/).pop();
@@ -123,7 +121,6 @@ async function openFile(p) {
   setBusy(false); layoutOverlay(); renderTimeline();
 }
 
-// ---------- transcripción ----------
 async function transcribe() {
   if (!state.file || state.busy) return;
   setBusy(true);
@@ -139,17 +136,16 @@ async function transcribe() {
     state.lang = r.lang || S.guessLang(state.segs.map(s => s.text).join(' '));
     const secs = (performance.now() - t0) / 1000;
     status(t('Transcripción lista: {n} subtítulos · {ts} · idioma {lang} · {s} s ({dev})', { n: state.segs.length, ts: t(state.wordTimestamps ? 'tiempos por palabra' : 'tiempos estimados'), lang: t(state.lang === 'es' ? 'español' : 'inglés'), s: secs.toFixed(1), dev: r.device === 'webgpu' ? 'GPU' : 'CPU' }));
-    window.__lastTranscribe = { wordTimestamps: state.wordTimestamps, seconds: secs, audioSeconds: r.seconds, device: r.device, lang: state.lang };
+    state.lastTranscribe = { wordTimestamps: state.wordTimestamps, seconds: secs, audioSeconds: r.seconds, device: r.device, lang: state.lang };
     renderSegs(); renderOverlay(); renderTimeline();
   } catch (e) { console.error(e); toast(t('Error al transcribir: {e}', { e: e.message.split('\n')[0] }), true); status(t('Error al transcribir.')); }
   finally { progress(null); setBusy(false); }
 }
 
-// ---------- segmentación por palabras ----------
 function fitsFn() {
   const [W, H] = dims(); const st = state.style; const g = S.geometry(st, W, H); const meas = measureFn(st, g.fontPx);
   const maxL = +state.settings.maxLines || 2;
-  return (t) => S.wrap(t, g.maxW - g.outline * 2, meas).length <= maxL;
+  return (txt) => S.wrap(txt, g.maxW - g.outline * 2, meas).length <= maxL;
 }
 function segmentWords(words) {
   return S.resegment(words, { maxWords: +state.settings.maxWords, fits: fitsFn() }).map(s => ({ ...s, id: crypto.randomUUID() }));
@@ -162,7 +158,6 @@ function resegmentAll() {
   renderSegs(); renderOverlay(); renderTimeline();
 }
 
-// ---------- traducción ----------
 async function translate() {
   if (!state.segs.length || state.busy) return;
   let dir = $('#trSel').value;
@@ -170,7 +165,6 @@ async function translate() {
   setBusy(true);
   try {
     status(t('Traduciendo ({dir})…', { dir: t(dir === 'en-es' ? 'inglés → español' : 'español → inglés') }));
-    // traducimos oraciones completas y después volvemos a cortar según el límite de palabras
     const groups = S.groupSentences(sorted());
     const out = await ml('translate', { texts: groups.map(g => g.text), from: dir.slice(0, 2), to: dir.slice(3) });
     pushUndo();
@@ -182,21 +176,23 @@ async function translate() {
   finally { progress(null); setBusy(false); }
 }
 
-// ---------- lista de segmentos ----------
 function renderSegs() {
-  const list = $('#segList'); list.innerHTML = '';
+  const list = $('#segList');
   const segs = sorted(); state.segs = segs;
   $('#segCount').textContent = segs.length ? t('{n} subtítulos', { n: segs.length }) : '';
-  if (!segs.length) list.innerHTML = `<p class="hint">${t('Todavía no hay subtítulos. Transcribí el audio o agregalos a mano con “＋ Agregar en el cursor”.')}</p>`;
+  if (!segs.length) list.replaceChildren(h('p', { className: 'hint', textContent: t('Todavía no hay subtítulos. Transcribí el audio o agregalos a mano con “＋ Agregar en el cursor”.') }));
+  else list.replaceChildren();
   segs.forEach((s, i) => {
-    const el = document.createElement('div'); el.className = 'seg' + (i === state.sel ? ' sel' : ''); el.dataset.id = s.id;
-    el.innerHTML = `<div class="num">${i + 1}</div>
-      <div class="times"><button data-a="go" title="${t('Ir a este subtítulo')}">▶</button>
-        <input class="t-start" value="${S.fmtClock(s.start)}" title="${t('Inicio')}"><button data-a="setStart" title="${t('Inicio = cursor')}">⇤</button>
-        <span class="muted">→</span>
-        <input class="t-end" value="${S.fmtClock(s.end)}" title="${t('Fin')}"><button data-a="setEnd" title="${t('Fin = cursor')}">⇥</button>
-        <span class="spacer"></span><button data-a="del" title="${t('Borrar')}">✕</button></div>
-      <textarea rows="2"></textarea>`;
+    const btn = (a, label, title) => h('button', { textContent: label, title: t(title), dataset: { a } });
+    const el = h('div', { className: 'seg' + (i === state.sel ? ' sel' : ''), dataset: { id: s.id } },
+      h('div', { className: 'num', textContent: String(i + 1) }),
+      h('div', { className: 'times' },
+        btn('go', '▶', 'Ir a este subtítulo'),
+        h('input', { className: 't-start', value: S.fmtClock(s.start), title: t('Inicio') }), btn('setStart', '⇤', 'Inicio = cursor'),
+        h('span', { className: 'muted', textContent: '→' }),
+        h('input', { className: 't-end', value: S.fmtClock(s.end), title: t('Fin') }), btn('setEnd', '⇥', 'Fin = cursor'),
+        h('span', { className: 'spacer' }), btn('del', '✕', 'Borrar')),
+      h('textarea', { rows: 2 }));
     el.querySelector('textarea').value = s.text;
     el.querySelector('textarea').addEventListener('focus', () => { pushUndo(); state.sel = i; markSel(); });
     el.querySelector('textarea').addEventListener('input', (e) => { s.text = e.target.value; s.words = null; renderOverlay(); renderTimeline(); });
@@ -221,17 +217,16 @@ function renderSegs() {
 }
 function markSel() { document.querySelectorAll('.seg').forEach((el, i) => el.classList.toggle('sel', i === state.sel)); renderTimeline(); }
 function addSeg() {
-  const t = $('#video').currentTime || 0; pushUndo();
-  const next = sorted().find(s => s.start > t);
-  const seg = { id: crypto.randomUUID(), start: t, end: Math.min(t + 2.5, next ? next.start : t + 2.5) || t + 2.5, text: t('Nuevo subtítulo') };
-  if (seg.end - seg.start < 0.3) seg.end = t + 1;
+  const now = $('#video').currentTime || 0; pushUndo();
+  const next = sorted().find(s => s.start > now);
+  const seg = { id: crypto.randomUUID(), start: now, end: Math.min(now + 2.5, next ? next.start : now + 2.5) || now + 2.5, text: t('Nuevo subtítulo') };
+  if (seg.end - seg.start < 0.3) seg.end = now + 1;
   state.segs.push(seg); renderSegs();
   const idx = sorted().indexOf(seg); state.sel = idx; markSel();
   const ta = document.querySelectorAll('.seg textarea')[idx]; ta?.focus(); ta?.select(); ta?.scrollIntoView({ block: 'center' });
   renderOverlay();
 }
 
-// ---------- preview con overlay ----------
 let vbox = { x: 0, y: 0, w: 0, h: 0 };
 function layoutOverlay() {
   const p = $('#player').getBoundingClientRect(); const [W, H] = dims();
@@ -242,15 +237,14 @@ function layoutOverlay() {
 }
 function hexA(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
 function renderOverlay() {
-  const ov = $('#overlay'); const t = $('#video').currentTime || 0; const st = state.style; const [W, H] = dims();
-  const active = layoutSegs(sorted().filter(s => t >= s.start && t < s.end && s.text.trim()), st, W, H);
-  document.querySelectorAll('.seg').forEach(el => { const s = state.segs.find(x => x.id === el.dataset.id); el.classList.toggle('active', !!s && t >= s.start && t < s.end); });
-  ov.innerHTML = '';
+  const ov = $('#overlay'); const now = $('#video').currentTime || 0; const st = state.style; const [W, H] = dims();
+  const active = layoutSegs(sorted().filter(s => now >= s.start && now < s.end && s.text.trim()), st, W, H);
+  document.querySelectorAll('.seg').forEach(el => { const s = state.segs.find(x => x.id === el.dataset.id); el.classList.toggle('active', !!s && now >= s.start && now < s.end); });
+  ov.replaceChildren();
   const g = S.geometry(st, W, H); const k = vbox.sc || 1; const ratio = fontRatio(st);
   const bshift = baselineShift(st, ratio) * g.fontPx;
-  const lineH = g.fontPx * ratio; // alto de línea en px de video (= tamaño ASS)
+  const lineH = g.fontPx * ratio;
   for (const s of active) {
-    // cada línea se posiciona igual que su evento ASS (ver Subs.linePositions)
     const pos = S.linePositions(g, s.lines.length, lineH);
     const top = Math.min(...pos.map(p => p.an === 2 ? p.y - lineH : p.an === 8 ? p.y : p.y - lineH / 2));
     const d = document.createElement('div'); d.className = 'sub' + (st.box ? ' boxed' : '');
@@ -264,8 +258,7 @@ function renderOverlay() {
       if (st.box) Object.assign(l.style, { background: hexA(st.boxColor, st.boxOpacity), padding: `${g.outline * k}px`, top: (ly - g.outline) * k + 'px', height: 'auto' });
       else {
         if (g.outline > 0) Object.assign(l.style, { WebkitTextStroke: `${2 * g.outline * k}px ${st.outlineColor}`, paintOrder: 'stroke fill' });
-        // libass \blur ≈ desvío gaussiano; CSS text-shadow usa radio = 2σ
-        if (g.shadow > 0 || g.blur > 0) l.style.textShadow = `${g.shadow * k}px ${g.shadow * k}px ${(g.blur * 2 * BLUR_K) * k}px ${hexA(st.shadowColor, st.shadowOpacity)}`;
+        if (g.shadow > 0 || g.blur > 0) l.style.textShadow = `${g.shadow * k}px ${g.shadow * k}px ${g.blur * 2 * k}px ${hexA(st.shadowColor, st.shadowOpacity)}`;
       }
       d.appendChild(l);
     });
@@ -273,7 +266,6 @@ function renderOverlay() {
     ov.appendChild(d);
   }
 }
-const BLUR_K = 1.0;
 function startDrag(e) {
   e.preventDefault(); const el = e.currentTarget; el.classList.add('dragging');
   const r = $('#overlay').getBoundingClientRect(); const st = state.style; const [W, H] = dims();
@@ -289,7 +281,6 @@ function startDrag(e) {
   window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
 }
 
-// ---------- timeline ----------
 function renderTimeline() {
   const tl = $('#timeline'); const dur = state.info?.duration || $('#video').duration || 1;
   tl.querySelectorAll('.blk').forEach(b => b.remove());
@@ -309,7 +300,6 @@ function tick() {
 }
 let seeking = false;
 
-// ---------- estilos ----------
 const STYLE_KEYS = Object.keys(S.DEFAULT_STYLE);
 function syncStyleUI() {
   const st = state.style;
@@ -334,16 +324,25 @@ function bindStyleUI() {
 }
 async function loadFonts() {
   const sel = $('#st-fontFamily'); let sys = [];
-  try { if (window.queryLocalFonts) { const fs = await window.queryLocalFonts(); state.localFonts = fs; sys = [...new Set(fs.map(f => f.family))].sort((a, b) => a.localeCompare(b)); } } catch (e) { console.warn('queryLocalFonts', e); }
+  try { if (window.queryLocalFonts) { const list = await window.queryLocalFonts(); state.localFonts = list; sys = [...new Set(list.map(f => f.family).filter(f => typeof f === 'string' && f.length <= 80))].sort((a, b) => a.localeCompare(b)); } } catch (e) { console.warn('queryLocalFonts', e); }
   if (!sys.length) sys = FALLBACK_SYS;
   state.sysFonts = sys;
-  sel.innerHTML = `<optgroup label="${t('Incluidas (Google Fonts)')}">${BUNDLED.map(f => `<option>${f}</option>`).join('')}</optgroup><optgroup label="${t('Del sistema')}">${sys.filter(f => !BUNDLED.includes(f)).map(f => `<option>${f}</option>`).join('')}</optgroup>`;
+  sel.replaceChildren(optGroup(t('Incluidas (Google Fonts)'), BUNDLED), optGroup(t('Del sistema'), sys.filter(f => !BUNDLED.includes(f))));
   sel.value = state.style.fontFamily;
   await Promise.all(BUNDLED.map(f => document.fonts.load(`700 20px "${f}"`).catch(() => {})));
 }
+function option(value, label) { const o = document.createElement('option'); o.value = value; o.textContent = label; return o; }
+function optGroup(label, values) { const g = document.createElement('optgroup'); g.label = label; g.append(...values.map(v => option(v, v))); return g; }
+function cleanPresets(o) {
+  const out = {};
+  if (!o || typeof o !== 'object') return out;
+  for (const n of Object.keys(o).slice(0, 200)) if (typeof n === 'string' && n.length <= 80 && n !== '__proto__') out[n] = S.cleanStyle(o[n]);
+  return out;
+}
+const withIds = (segs) => segs.map(s => ({ ...s, id: s.id || crypto.randomUUID() }));
 function renderPresets() {
   const sel = $('#presetSel'); const names = Object.keys(state.presets);
-  sel.innerHTML = `<option value="">${t('— Presets guardados ({n}) —', { n: names.length })}</option>` + names.map(n => `<option value="${n.replace(/"/g, '&quot;')}">${BUILTIN_PRESETS[n] ? t(n) : n}</option>`).join('');
+  sel.replaceChildren(option('', t('— Presets guardados ({n}) —', { n: names.length })), ...names.map(n => option(n, Object.hasOwn(BUILTIN_PRESETS, n) ? t(n) : n)));
 }
 const BUILTIN_PRESETS = {
   'Clásico (borde negro)': { ...S.DEFAULT_STYLE },
@@ -351,16 +350,15 @@ const BUILTIN_PRESETS = {
   'Redes (amarillo grande)': { ...S.DEFAULT_STYLE, fontFamily: 'Anton', bold: false, fontSize: 8, color: '#FFE14D', outlineWidth: 0.5, position: 'middle', maxWidth: 70 },
 };
 
-// ---------- persistencia ----------
 let saveT; function saveStore() { clearTimeout(saveT); saveT = setTimeout(() => api.storeSet({ style: state.style, presets: state.presets, settings: state.settings }), 300); }
 
-// ---------- exportación ----------
-function baseName() { return state.file ? state.file.replace(/\.[^./\\]+$/, '') : 'subtitulos'; }
+function baseName() { return state.file ? state.file.split(/[\\/]/).pop().replace(/\.[^.]+$/, '') : 'subtitulos'; }
+function mediaDir() { return state.file ? state.file.replace(/[\\/][^\\/]*$/, '') : null; }
+const saveAs = (name, ext) => api.save({ dir: mediaDir(), name: `${name}.${ext}`, ext });
 async function exportText(kind) {
-  const [W, H] = dims();
   await ensureMetrics(state.style);
   const text = kind === 'srt' ? S.toSRT(sorted()) : buildAss();
-  const p = await api.save({ defaultPath: `${baseName()}.${kind}`, filters: [{ name: kind.toUpperCase(), extensions: [kind] }] });
+  const p = await saveAs(baseName(), kind);
   if (!p) return; await api.write(p, text); toast(t('Guardado: {f}', { f: p.split(/[\\/]/).pop() }));
   return p;
 }
@@ -368,13 +366,13 @@ async function systemFontFiles() {
   const fam = state.style.fontFamily; if (BUNDLED.includes(fam) || !state.localFonts) return [];
   const out = [];
   for (const f of state.localFonts.filter(f => f.family === fam)) {
-    try { const b = await f.blob(); out.push({ file: f.postscriptName.replace(/[^\w.-]/g, '_') + '.font', data: new Uint8Array(await b.arrayBuffer()) }); } catch {}
+    try { const b = await f.blob(); out.push({ data: new Uint8Array(await b.arrayBuffer()) }); } catch (e) { console.warn('fuente', e); }
   }
   return out;
 }
 async function burn(outPath, overlay) {
   const codec = $('#codecSel').value; const ext = overlay ? (overlay === 'alpha' ? 'mov' : 'mp4') : codec === 'prores' ? 'mov' : 'mp4';
-  const p = outPath || await api.save({ defaultPath: `${baseName()}-${overlay ? 'solo-subs' + (overlay === 'alpha' ? '' : '-' + overlay) : 'subtitulado'}.${ext}`, filters: [{ name: ext.toUpperCase(), extensions: [ext] }] });
+  const p = outPath || await saveAs(`${baseName()}-${overlay ? 'solo-subs' + (overlay === 'alpha' ? '' : '-' + overlay) : 'subtitulado'}`, ext);
   if (!p) return;
   setBusy(true); $('#btnCancel').hidden = false; status(t(overlay ? 'Exportando video solo con subtítulos…' : 'Exportando video con subtítulos…')); progress(0, '0%');
   try {
@@ -388,7 +386,6 @@ async function burn(outPath, overlay) {
 }
 api.onExportProgress(p => progress(p, t('exportando {p}%', { p: (p * 100).toFixed(0) })));
 
-// ---------- eventos ----------
 function bind() {
   $('#btnOpen').onclick = async () => openFile(await api.openMedia());
   $('#btnTranscribe').onclick = transcribe; $('#btnTranslate').onclick = translate;
@@ -396,7 +393,7 @@ function bind() {
   $('#maxWordsSel').onchange = (e) => { state.settings.maxWords = +e.target.value; saveStore(); };
   $('#maxLinesSel').onchange = (e) => { state.settings.maxLines = +e.target.value; saveStore(); };
   $('#btnAdd').onclick = addSeg; $('#btnUndo').onclick = undo;
-  $('#btnImport').onclick = async () => { const t = await api.openSubs(); if (!t) return; pushUndo(); state.segs = S.parseSRT(t).map(s => ({ ...s, id: crypto.randomUUID() })); renderSegs(); renderOverlay(); renderTimeline(); };
+  $('#btnImport').onclick = async () => { const txt = await api.openSubs(); if (!txt) return; pushUndo(); state.segs = withIds(S.cleanSegs(S.parseSRT(txt))); renderSegs(); renderOverlay(); renderTimeline(); };
   $('#btnSrt').onclick = () => exportText('srt'); $('#btnAss').onclick = () => exportText('ass');
   $('#uiLangSel').onchange = (e) => setUiLang(e.target.value);
   $('#btnBurn').onclick = () => burn(); $('#btnOverlay').onclick = () => burn(null, $('#ovlSel').value); $('#btnCancel').onclick = () => api.cancelExport();
@@ -406,9 +403,9 @@ function bind() {
   const loop = () => { if (!v.paused) tick(); requestAnimationFrame(loop); }; loop();
   const sk = $('#seek'); sk.oninput = () => { seeking = true; v.currentTime = (v.duration || 0) * sk.value / 1000; }; sk.onchange = () => seeking = false;
   $('#timeline').onclick = (e) => { const r = e.currentTarget.getBoundingClientRect(); v.currentTime = (v.duration || 0) * (e.clientX - r.left) / r.width; };
-  document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
-    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
-    document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + t.dataset.tab));
+  document.querySelectorAll('.tab').forEach(tab => tab.onclick = () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === tab));
+    document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab.dataset.tab));
   });
   window.addEventListener('resize', layoutOverlay); new ResizeObserver(layoutOverlay).observe($('#player'));
   window.addEventListener('keydown', (e) => {
@@ -420,36 +417,33 @@ function bind() {
   pl.addEventListener('dragover', e => { e.preventDefault(); pl.classList.add('dragover'); });
   pl.addEventListener('dragleave', () => pl.classList.remove('dragover'));
   pl.addEventListener('drop', e => { e.preventDefault(); pl.classList.remove('dragover'); const f = e.dataTransfer.files[0]; if (f) openFile(api.pathForFile(f)); });
-  // ajustes
   $('#modelSel').onchange = (e) => { state.settings.model = e.target.value; saveStore(); };
   $('#deviceSel').onchange = (e) => { state.settings.device = e.target.value; saveStore(); };
   $('#langSel').onchange = (e) => { state.settings.lang = e.target.value; saveStore(); };
   const crf = $('#crf'); const crfOut = () => crf.nextElementSibling.textContent = crf.value; crf.oninput = crfOut; crfOut();
   $('#codecSel').onchange = (e) => { const pr = e.target.value === 'prores'; $('#crfRow').hidden = pr; $('#presetRow').hidden = pr; if (e.target.value === 'hevc' && +crf.value === 15) { crf.value = 17; crfOut(); } };
-  // presets
-  $('#presetSel').onchange = (e) => { const p = state.presets[e.target.value]; if (p) { state.style = { ...S.DEFAULT_STYLE, ...p }; $('#st-fontFamily').value = state.style.fontFamily; syncStyleUI(); renderOverlay(); saveStore(); } };
-  $('#btnPresetSave').onclick = () => { const n = $('#presetName').value.trim(); if (!n) { toast(t('Poné un nombre para el preset.')); return; } state.presets[n] = { ...state.style }; renderPresets(); $('#presetSel').value = n; $('#presetName').value = ''; saveStore(); toast(t('Preset “{n}” guardado', { n })); };
+  $('#presetSel').onchange = (e) => { const p = Object.hasOwn(state.presets, e.target.value) ? state.presets[e.target.value] : null; if (p) { state.style = S.cleanStyle(p); $('#st-fontFamily').value = state.style.fontFamily; syncStyleUI(); renderOverlay(); saveStore(); } };
+  $('#btnPresetSave').onclick = () => { const n = $('#presetName').value.trim().slice(0, 80); if (!n || n === '__proto__') { toast(t('Poné un nombre para el preset.')); return; } state.presets[n] = { ...state.style }; renderPresets(); $('#presetSel').value = n; $('#presetName').value = ''; saveStore(); toast(t('Preset “{n}” guardado', { n })); };
   $('#btnPresetDel').onclick = () => { const n = $('#presetSel').value; if (!n) return; delete state.presets[n]; renderPresets(); saveStore(); };
 }
 
-// ---------- inicio ----------
 async function init() {
   const saved = await api.storeGet();
-  if (saved.style) state.style = { ...S.DEFAULT_STYLE, ...saved.style };
-  state.presets = saved.presets || { ...BUILTIN_PRESETS };
-  if (saved.settings) Object.assign(state.settings, saved.settings);
+  state.style = S.cleanStyle(saved.style);
+  state.presets = saved.presets ? cleanPresets(saved.presets) : { ...BUILTIN_PRESETS };
+  state.settings = S.cleanSettings(saved.settings, state.settings);
   $('#modelSel').value = state.settings.model; $('#deviceSel').value = state.settings.device; $('#langSel').value = state.settings.lang; $('#maxWordsSel').value = String(state.settings.maxWords); $('#maxLinesSel').value = String(state.settings.maxLines);
   applyUiLang();
   bind(); bindStyleUI(); await loadFonts(); syncStyleUI(); renderPresets(); renderSegs(); layoutOverlay();
   const gpu = navigator.gpu ? await navigator.gpu.requestAdapter().catch(() => null) : null;
   state.gpu = !!gpu; renderAbout();
   initProject();
-  const cfg = await api.test.config(); if (cfg) selfTest(cfg);
+  const cfg = await api.test.config();
+  if (cfg) (await import('./selftest.js')).selfTest(cfg, { state, S, $, api, openFile, syncStyleUI, renderSegs, renderOverlay, ensureMetrics, tick, burn, setUiLang, isDirty, snap, saveProject, newProject, loadProject, transcribe, sorted, resegmentAll, undo, translate, buildAss, fontRatio, BUILTIN_PRESETS });
 }
 
-// ---------- idioma de la interfaz ----------
 function renderAbout() { $('#aboutTxt').textContent = t('Subtitulador {v} · Whisper + Opus-MT (transformers.js) · ffmpeg + libass.', { v: APP_VERSION }) + t(state.gpu ? ' · GPU (WebGPU) disponible ✔' : ' · WebGPU no disponible: se usa CPU (WASM).'); }
-const APP_VERSION = '1.3';
+const APP_VERSION = '1.3.1';
 function applyUiLang() {
   const pref = state.settings.uiLang || 'auto';
   I18N.setLang(pref === 'auto' ? I18N.systemLang(navigator.language) : pref);
@@ -463,7 +457,6 @@ function setUiLang(pref) {
   if (!state.file) $('#fileName').textContent = t('Ningún archivo abierto — también podés arrastrarlo acá');
 }
 
-// ---------- proyectos (.subtitulador) ----------
 const proj = { path: null, saved: null };
 function projectData() {
   return { app: 'Subtitulador', format: 1, media: { path: state.file }, lang: state.lang,
@@ -489,13 +482,14 @@ async function confirmDiscard() {
 }
 async function saveProject(as, forcePath) {
   let p = forcePath || (!as && proj.path);
-  if (!p) p = await api.save({ defaultPath: `${state.file ? baseName() : projName()}.subtitulador`, filters: [{ name: t('Proyecto Subtitulador'), extensions: ['subtitulador'] }] });
-  if (!p) return false; if (!p.endsWith('.subtitulador')) p += '.subtitulador';
+  if (!p) p = await saveAs(state.file ? baseName() : projName(), 'subtitulador');
+  if (!p) return false;
   await api.project.write(p, projectData()); proj.path = p; markSaved(); toast(t('Proyecto guardado ✔')); return true;
 }
 function applyExport(x) {
-  if (!x) return; if (x.codec) { $('#codecSel').value = x.codec; $('#codecSel').onchange({ target: $('#codecSel') }); }
-  if (x.crf) { $('#crf').value = x.crf; $('#crf').dispatchEvent(new Event('input')); } if (x.preset) $('#encPreset').value = x.preset; if (x.overlay) $('#ovlSel').value = x.overlay;
+  if (!x) return;
+  $('#codecSel').value = x.codec; $('#codecSel').onchange({ target: $('#codecSel') });
+  $('#crf').value = x.crf; $('#crf').dispatchEvent(new Event('input')); $('#encPreset').value = x.preset; $('#ovlSel').value = x.overlay;
 }
 async function loadProject(p, opts = {}) {
   if (!p) return false; if (!opts.skipConfirm && !await confirmDiscard()) return false;
@@ -505,10 +499,10 @@ async function loadProject(p, opts = {}) {
     const r = opts.relink !== undefined ? (opts.relink ? 0 : 1) : await api.project.confirm({ message: t('No encuentro el video del proyecto.'), detail: t('Estaba en:\n{p}\n\n¿Querés buscarlo (por si lo moviste)?', { p: d.media.path }), buttons: [t('Buscar video…'), t('Abrir sin video')], cancelId: 1 });
     if (r === 0) media = opts.relinkPath || await api.openMedia();
   }
-  state.style = { ...S.DEFAULT_STYLE, ...(d.style || {}) }; Object.assign(state.settings, d.settings || {}); state.lang = d.lang || null;
-  state.segs = (d.segs || []).map(s => ({ ...s, id: s.id || crypto.randomUUID() })); state.undo = []; state.sel = -1;
+  state.style = S.cleanStyle(d.style); state.settings = S.cleanSettings(d.settings, state.settings); state.lang = d.lang === 'es' || d.lang === 'en' ? d.lang : null;
+  state.segs = withIds(S.cleanSegs(d.segs)); state.undo = []; state.sel = -1;
   $('#maxWordsSel').value = String(state.settings.maxWords); $('#maxLinesSel').value = String(state.settings.maxLines); $('#langSel').value = state.settings.lang;
-  $('#modelSel').value = state.settings.model; $('#deviceSel').value = state.settings.device; applyExport(d.export);
+  $('#modelSel').value = state.settings.model; $('#deviceSel').value = state.settings.device; applyExport(S.cleanExport(d.export));
   $('#st-fontFamily').value = state.style.fontFamily; syncStyleUI();
   if (media) await openFile(media); else { state.file = null; }
   await ensureMetrics(state.style); renderSegs(); renderOverlay(); renderTimeline();
@@ -535,95 +529,4 @@ async function initProject() {
   const first = await api.project.ready(); if (first) await loadProject(first, { skipConfirm: true });
 }
 
-// ---------- autotest (Linux/CI): mismo flujo que un usuario ----------
-async function selfTest(cfg) {
-  const res = { ok: false, steps: [] }; const log = (k, v) => { res.steps.push({ k, v }); console.log('SELFTEST', k, JSON.stringify(v)); };
-  if (cfg.compare) {
-    try {
-      await openFile(cfg.compare.input); state.settings.maxLines = 2;
-      document.querySelector('.tab[data-tab="style"]').click();
-      for (const vr of cfg.compare.variants) {
-        state.style = { ...S.DEFAULT_STYLE, ...vr.style }; $('#st-fontFamily').value = state.style.fontFamily; syncStyleUI();
-        state.segs = [{ id: 'a', start: 0, end: 30, text: cfg.compare.text }];
-        renderSegs(); const v = $('#video'); v.currentTime = 5; await new Promise(r => setTimeout(r, 700));
-        await ensureMetrics(state.style); tick(); await new Promise(r => setTimeout(r, 300));
-        const ob = $('#overlay').getBoundingClientRect();
-        await api.test.shot(cfg.compare.out + vr.name + '-ui.png');
-        const r = await burn(cfg.compare.out + vr.name + '.mp4');
-        log('variant', { name: vr.name, ok: r && r.ok, overlay: [ob.x, ob.y, ob.width, ob.height], dpr: devicePixelRatio, out: r && [r.out.width, r.out.height] });
-      }
-      const C = cfg.compare;
-      if (C.uiShots) {
-        state.segs = [{ id: 'a', start: 0, end: 30, text: C.text }, { id: 'b', start: 30, end: 33, text: 'Segundo subtítulo' }]; renderSegs();
-        for (const [l, tab] of [['en', 'subs'], ['en', 'style'], ['en', 'export'], ['en', 'settings'], ['es', 'subs'], ['es', 'settings']]) {
-          setUiLang(l); document.querySelector(`.tab[data-tab="${tab}"]`).click(); await new Promise(r => setTimeout(r, 500));
-          await api.test.shot(C.out + `ui-${l}-${tab}.png`);
-          log('uiLang', { l, tab, tabs: [...document.querySelectorAll('.tab')].map(b => b.textContent).join('|'), status: $('#statusTxt').textContent.slice(0, 60) });
-        }
-        await api.test.menu(C.out + 'menu-es.png'); setUiLang('en'); await api.test.menu(C.out + 'menu-en.png'); setUiLang('auto');
-      }
-      if (C.overlays) for (const m of ['alpha', 'green', 'black']) {
-        const r = await burn(C.out + 'ovl-' + m + (m === 'alpha' ? '.mov' : '.mp4'), m);
-        log('overlay', { m, ok: r && r.ok, out: r && r.out, in: r && [r.in.width, r.in.height, r.in.fps, r.in.duration] });
-      }
-      if (C.project) {
-        state.segs = [{ id: 'a', start: 0.5, end: 3, text: 'Primera línea del proyecto' }, { id: 'b', start: 3.2, end: 6, text: C.text }];
-        state.settings.maxWords = 5; state.settings.lang = 'es'; $('#ovlSel').value = 'green'; $('#codecSel').value = 'hevc';
-        renderSegs(); renderOverlay();
-        document.querySelector('.tab[data-tab="export"]').click(); await new Promise(r => setTimeout(r, 900));
-        log('dirtyBeforeSave', { dirty: isDirty(), title: document.title, name: $('#projName').textContent, dot: !$('#projDot').hidden });
-        await api.test.shot(C.out + 'ui-dirty.png');
-        const before = snap(); await saveProject(false, C.project);
-        log('savedClean', { dirty: isDirty() });
-        await newProject(); log('afterNew', { segs: state.segs.length, file: state.file });
-        await loadProject(C.project, { skipConfirm: true });
-        log('roundtrip', { identical: snap() === before, dirty: isDirty(), segs: state.segs.length, file: state.file });
-        await loadProject(C.projMoved, { skipConfirm: true }); log('relative', { file: state.file, segs: state.segs.length });
-        await loadProject(C.projLost, { skipConfirm: true, relink: true, relinkPath: C.input }); log('relink', { file: state.file, dirty: isDirty() });
-        await saveProject(false); await new Promise(r => setTimeout(r, 800));
-        log('menu', await api.test.menu(C.out + 'menu.png'));
-      }
-      res.ok = true;
-    } catch (e) { log('error', String(e.stack || e)); }
-    return api.test.done(res);
-  }
-  try {
-    for (const job of cfg.jobs) {
-      await openFile(job.input); log('probe', state.info);
-      if (job.model) { state.settings.model = job.model; }
-      state.settings.device = cfg.device || 'auto'; if (job.maxWords != null) state.settings.maxWords = 0; $('#langSel').value = job.lang || 'auto';
-      await transcribe(); log('transcribe', { ...window.__lastTranscribe, segs: sorted().map(s => [s.start.toFixed(2), s.end.toFixed(2), s.text]) });
-      if (!state.segs.length) throw new Error('sin segmentos');
-      const stats = () => { const a = sorted(); const wc = a.map(x => x.text.split(/\s+/).filter(Boolean).length);
-        return { cues: a.length, avgWords: +(wc.reduce((p, q) => p + q, 0) / a.length).toFixed(2), maxWords: Math.max(...wc), minDur: +Math.min(...a.map(x => x.end - x.start)).toFixed(2),
-          overlaps: a.filter((x, i) => i && x.start < a[i - 1].end - 1e-6).length, monotonic: a.every((x, i) => x.end > x.start && (!i || x.start >= a[i - 1].start)),
-          sample: a.slice(0, 6).map(x => `${x.start.toFixed(2)}-${x.end.toFixed(2)} ${x.text}`) }; };
-      if (job.maxWords != null) {
-        log('antes(auto)', stats());
-        state.settings.maxWords = job.maxWords; $('#maxWordsSel').value = String(job.maxWords); resegmentAll(); log(`despues(${job.maxWords})`, stats());
-        undo(); log('undo', { cues: state.segs.length }); resegmentAll();
-      }
-      await api.write(job.out + '.orig.srt', S.toSRT(sorted()));
-      $('#trSel').value = 'auto'; await translate(); log('translate', sorted().map(s => s.text)); if (job.maxWords != null) log('traducido', stats());
-      if (job.style) { state.style = { ...S.DEFAULT_STYLE, ...BUILTIN_PRESETS[job.style] || {}, ...(job.styleOverride || {}) }; $('#st-fontFamily').value = state.style.fontFamily; syncStyleUI(); }
-      await api.write(job.out + '.srt', S.toSRT(sorted())); await api.write(job.out + '.ass', buildAss());
-      const v = $('#video'); const s0 = sorted()[Math.min(1, state.segs.length - 1)]; v.currentTime = (s0.start + s0.end) / 2; await new Promise(r => setTimeout(r, 800)); tick();
-      await ensureMetrics(state.style); renderOverlay();
-      if (job.drag) { // simula arrastrar el subtítulo sobre la preview
-        const el = document.querySelector('#overlay .sub'); const b = el.getBoundingClientRect();
-        el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: b.x + b.width / 2, clientY: b.y + b.height / 2 }));
-        window.dispatchEvent(new MouseEvent('mousemove', { clientX: b.x + b.width / 2 + job.drag[0], clientY: b.y + b.height / 2 + job.drag[1] }));
-        window.dispatchEvent(new MouseEvent('mouseup', {})); log('drag', { pos: state.style.position, x: state.style.customX, y: state.style.customY });
-      }
-      log('previewTime', { t: v.currentTime, vw: v.videoWidth, rs: v.readyState, err: v.error && v.error.message, ratio: fontRatio(state.style) });
-      document.querySelector(`.tab[data-tab="${job.tab || 'subs'}"]`).click(); await new Promise(r => setTimeout(r, 300));
-      await api.test.shot(job.shot || (job.out + '-ui.png'));
-      $('#codecSel').value = job.codec || 'h264';
-      const r = await burn(job.out + '.' + (job.codec === 'prores' ? 'mov' : 'mp4')); log('burn', { ok: r?.ok, seconds: r?.seconds, in: r && [r.in.width, r.in.height, r.in.fps], out: r && [r.out.width, r.out.height, r.out.fps], args: r?.args, error: r?.error });
-      if (!r?.ok) throw new Error('burn falló');
-    }
-    res.ok = true;
-  } catch (e) { log('error', String(e.stack || e)); }
-  api.test.done(res);
-}
 init();

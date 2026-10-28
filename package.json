@@ -1,23 +1,23 @@
 {
   "name": "subtitulador",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Local AI subtitles for macOS: transcribe, translate EN↔ES, style & burn-in",
   "main": "src/main.js",
   "scripts": {
     "vendor": "node scripts/vendor.js && node scripts/fetch-ffmpeg.js",
     "start": "npm run vendor && electron .",
-    "selftest": "node scripts/selftest.js",
+    "test": "node scripts/test.js pipeline",
+    "test:compare": "node scripts/test.js compare",
     "dist:mac": "npm run vendor && node scripts/build-mac.js"
   },
   "keywords": [],
   "author": "Adolfo Mesen",
   "license": "MIT",
   "type": "commonjs",
-  "dependencies": {},
   "devDependencies": {
-    "electron": "^41.7.1",
-    "electron-builder": "^26.18.0",
-    "@huggingface/transformers": "^4.3.2"
+    "@huggingface/transformers": "4.3.2",
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0"
   },
   "productName": "Subtitulador",
   "build": {
@@ -28,6 +28,7 @@
     },
     "files": [
       "src/**/*",
+      "!src/renderer/selftest.js",
       "package.json"
     ],
     "asar": true,
@@ -49,10 +50,7 @@
       "identity": null,
       "hardenedRuntime": false,
       "gatekeeperAssess": false,
-      "icon": "build/icon.png",
-      "extendInfo": {
-        "NSMicrophoneUsageDescription": "No se usa el micrófono."
-      }
+      "icon": "build/icon.png"
     },
     "fileAssociations": [
       {
@@ -62,11 +60,25 @@
         "role": "Editor",
         "icon": "build/icon.png"
       }
-    ]
+    ],
+    "copyright": "Copyright © 2026 Adolfo Mesen",
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "grantFileProtocolExtraPrivileges": false,
+      "resetAdHocDarwinSignature": false
+    }
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/adolfosmrr/subtitulador.git"
   },
-  "homepage": "https://github.com/adolfosmrr/subtitulador"
+  "homepage": "https://github.com/adolfosmrr/subtitulador",
+  "engines": {
+    "node": ">=20"
+  }
 }

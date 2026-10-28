@@ -1,4 +1,3 @@
-// i18n mínimo por diccionario. La clave es el texto en español; EN es la traducción.
 (function (root, f) { if (typeof module === 'object' && module.exports) module.exports = f(); else root.I18N = f(); })(typeof self !== 'undefined' ? self : this, function () {
   const EN = {
   "Abrir video o audio…": "Open video or audio…",
@@ -185,7 +184,7 @@
 };
   let lang = 'es';
   const fill = (s, p) => p ? s.replace(/\{(\w+)\}/g, (m, k) => p[k] != null ? p[k] : m) : s;
-  function t(key, p) { return fill(lang === 'en' ? (EN[key] ?? key) : key, p); }
+  function t(key, p) { return fill(lang === 'en' ? (Object.hasOwn(EN, key) ? EN[key] : key) : key, p); }
   function setLang(l) { lang = l === 'en' ? 'en' : 'es'; }
   function getLang() { return lang; }
   function systemLang(loc) { return /^es/i.test(loc || '') ? 'es' : 'en'; }
