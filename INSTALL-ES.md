@@ -1,8 +1,8 @@
 # Subtitulador — instalación en macOS
 
 ## 1. Elegí el archivo correcto
-- **Mac con Apple Silicon (M1, M2, M3, M4…)**: `Subtitulador-1.3.2-mac-arm64.zip`
-- **Mac con Intel**: `Subtitulador-1.3.2-mac-x64.zip`
+- **Mac con Apple Silicon (M1, M2, M3, M4…)**: [Subtitulador-1.3.2-mac-arm64.zip](https://github.com/adolfosmrr/subtitleapp/releases/download/v1.3.2/Subtitulador-1.3.2-mac-arm64.zip)
+- **Mac con Intel**: [Subtitulador-1.3.2-mac-x64.zip](https://github.com/adolfosmrr/subtitleapp/releases/download/v1.3.2/Subtitulador-1.3.2-mac-x64.zip)
 
 ¿No sabés cuál tenés?  → Menú  > *Acerca de esta Mac*: si dice "Chip Apple M…", es Apple Silicon.
 

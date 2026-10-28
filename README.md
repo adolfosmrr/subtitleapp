@@ -49,8 +49,10 @@ This started as an experiment. I was subtitling my videos in CapCut, and auto-su
 
 ## Download
 Get the latest version from **[Releases](https://github.com/adolfosmrr/subtitleapp/releases/latest)**:
-- **Apple Silicon (M1, M2, M3, M4…)** → `Subtitulador-<version>-mac-arm64.zip`
-- **Intel Mac** → `Subtitulador-<version>-mac-x64.zip`
+### [⬇ Download for Apple Silicon (M1, M2, M3, M4…)](https://github.com/adolfosmrr/subtitleapp/releases/download/v1.3.2/Subtitulador-1.3.2-mac-arm64.zip)
+### [⬇ Download for Intel Mac](https://github.com/adolfosmrr/subtitleapp/releases/download/v1.3.2/Subtitulador-1.3.2-mac-x64.zip)
+
+The files are also listed under **Assets** at the bottom of the release page. [Checksums (SHA256SUMS.txt)](https://github.com/adolfosmrr/subtitleapp/releases/download/v1.3.2/SHA256SUMS.txt)
 
 Not sure? Apple menu  › *About This Mac*: "Chip Apple M…" means Apple Silicon. Requires macOS 12 or later.
 

@@ -45,8 +45,10 @@ Esto empezó como un experimento. Subtitulaba mis videos con CapCut, y ahí los 
 
 ## Descarga
 Bajá la última versión desde **[Releases](https://github.com/adolfosmrr/subtitleapp/releases/latest)**:
-- **Apple Silicon (M1, M2, M3, M4…)** → `Subtitulador-<versión>-mac-arm64.zip`
-- **Mac con Intel** → `Subtitulador-<versión>-mac-x64.zip`
+### [⬇ Descargar para Mac con Apple Silicon (M1, M2, M3, M4…)](https://github.com/adolfosmrr/subtitleapp/releases/download/v1.3.2/Subtitulador-1.3.2-mac-arm64.zip)
+### [⬇ Descargar para Mac con Intel](https://github.com/adolfosmrr/subtitleapp/releases/download/v1.3.2/Subtitulador-1.3.2-mac-x64.zip)
+
+Los archivos también están en **Assets**, abajo de todo en la página del Release. [Hashes (SHA256SUMS.txt)](https://github.com/adolfosmrr/subtitleapp/releases/download/v1.3.2/SHA256SUMS.txt)
 
 ¿No sabés cuál tenés? Menú  › *Acerca de esta Mac*: si dice "Chip Apple M…", es Apple Silicon. Requiere macOS 12 o posterior.
 
