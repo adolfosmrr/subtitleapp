@@ -8,6 +8,12 @@ Subtitulador convierte un video (o audio) en subtítulos con estilo, todo en tu 
 
 ![Subtitulador](docs/ui-es.png)
 
+## Por qué lo hice
+Esto empezó como un experimento. Subtitulaba mis videos con CapCut, y ahí los subtítulos automáticos son pagos. Así que probé otra cosa: armar mi propia herramienta con IA. La fui dirigiendo, siguiendo el código mientras se escribía y probando cada versión yo mismo hasta que hizo lo que necesitaba. Es gratis, corre en tu Mac y tus videos nunca salen de tu computadora. Si te sirve, usala.
+
+— Adolfo
+
+
 ## Funciones
 - **Transcripción con Whisper** (tiny → large-v3-turbo), detección automática inglés/español o manual, con **tiempos por palabra**. GPU (WebGPU) o CPU.
 - **Traducción inglés ↔ español** (Opus-MT), manteniendo los tiempos.
@@ -21,8 +27,24 @@ Subtitulador convierte un video (o audio) en subtítulos con estilo, todo en tu 
 - **Proyectos** (`.subtitulador`): guardar/abrir, recientes, aviso de cambios sin guardar, re-vincular videos movidos, doble clic para abrir.
 - **Interfaz en español o inglés** (según el idioma del sistema; se cambia en Ajustes o en el menú Idioma).
 
+## Cómo se usa
+1. **Abrí un video**: botón *Abrir video o audio…* o arrastrá el archivo a la ventana.
+2. **Transcribí**: elegí el idioma (o *detectar*) y tocá *Transcribir*. La primera vez descarga el modelo.
+3. **Traducí** (opcional): inglés → español o español → inglés. Los tiempos se mantienen.
+4. **Editá**:
+   - Clic en un bloque de la línea de tiempo para saltar directo a ese subtítulo en la lista, listo para escribir.
+   - Doble clic en el subtítulo del video para editarlo ahí mismo. Enter guarda, Shift+Enter agrega un salto de línea, Esc cancela.
+   - Ajustá palabras por subtítulo y líneas, corregí los tiempos o deshacé con ⌘Z.
+5. **Dale estilo**: fuente, tamaño, colores, borde, sombra, caja de fondo, interlineado y posición. También podés arrastrar el subtítulo sobre el video.
+6. **Exportá**: video con los subtítulos quemados, video solo con subtítulos y fondo transparente para tu editor, o archivos `.srt` / `.ass`.
+7. **Guardá el proyecto** (⌘S) para seguir después.
+
+| Clic en la línea de tiempo | Doble clic para editar en el video |
+|---|---|
+| ![](docs/timeline-jump.png) | ![](docs/inline-edit.png) |
+
 ## Descarga
-Bajá la última versión desde **[Releases](https://github.com/adolfosmrr/subtitulador/releases/latest)**:
+Bajá la última versión desde **[Releases](https://github.com/adolfosmrr/subtitleapp/releases/latest)**:
 - **Apple Silicon (M1, M2, M3, M4…)** → `Subtitulador-<versión>-mac-arm64.zip`
 - **Mac con Intel** → `Subtitulador-<versión>-mac-x64.zip`
 
@@ -40,7 +62,7 @@ Bajá la última versión desde **[Releases](https://github.com/adolfosmrr/subti
 3. La primera transcripción descarga el modelo de Whisper (Ajustes › Modelo; "Small" ≈ 500 MB). Los modelos quedan en `~/Library/Application Support/Subtitulador`.
 
 ## Verificá la descarga
-Bajá Subtitulador solamente desde la página de **[Releases](https://github.com/adolfosmrr/subtitulador/releases)** de este repositorio. La app no tiene actualizador automático, así que nadie puede meter código en tu Mac a través de ella: las versiones nuevas las instalás vos, desde acá.
+Bajá Subtitulador solamente desde la página de **[Releases](https://github.com/adolfosmrr/subtitleapp/releases)** de este repositorio. La app no tiene actualizador automático, así que nadie puede meter código en tu Mac a través de ella: las versiones nuevas las instalás vos, desde acá.
 
 Cada versión publica el SHA-256 de cada zip en `SHA256SUMS.txt`. Antes de abrir la app, verificalo en la Terminal:
 ```bash
@@ -57,14 +79,19 @@ El valor tiene que coincidir exactamente con el de `SHA256SUMS.txt`. Si no coinc
 - Los "fuses" de Electron están endurecidos: sin `ELECTRON_RUN_AS_NODE`, sin `NODE_OPTIONS`, sin flags de inspector, y el código solo se carga desde su archivo con verificación de integridad.
 
 ## Cómo funciona
-- App **Electron**. Whisper y Opus-MT corren con **[transformers.js](https://github.com/huggingface/transformers.js)** (ONNX Runtime Web, WebGPU o WASM) en un worker: nada sale de tu computadora salvo la descarga única de los modelos desde Hugging Face.
-- Los subtítulos se renderizan con **ffmpeg + libass** (formato ASS). La vista previa reproduce las métricas de libass (métricas OS/2 de la fuente, posición de cada línea, difuminado de la sombra), así que lo que ves es lo que sale.
+1. **Transcripción:** [Whisper](https://github.com/openai/whisper) corre en tu Mac y devuelve cada palabra con su propio tiempo.
+2. **Segmentación:** las palabras se agrupan en subtítulos según tus ajustes de palabras por subtítulo y líneas, cortando las líneas por el ancho real del texto.
+3. **Traducción (opcional):** [Opus-MT](https://github.com/Helsinki-NLP/Opus-MT) traduce inglés ↔ español frase por frase y mantiene los tiempos originales.
+4. **Edición y estilo:** editás todo en la app. La vista previa reproduce las métricas de libass, así que lo que ves es lo que sale.
+5. **Exportación:** el **ffmpeg + libass** incluido quema los subtítulos en el video con la misma resolución y fps, o exporta un clip solo con subtítulos en ProRes 4444 transparente / fondo verde / negro, o archivos `.srt` / `.ass`.
+
+Whisper y Opus-MT corren con [transformers.js](https://github.com/huggingface/transformers.js) (ONNX Runtime, WebGPU o CPU) dentro de una app Electron. **Todo es local:** la única conexión es la descarga única de los modelos desde Hugging Face; después funciona sin internet.
 
 ## Compilar desde el código
 Requisitos: Node.js 20+ y npm. `npm start` abre la app en modo desarrollo (antes descarga el runtime de transformers.js y ffmpeg); `npm run dist:mac` genera `dist/Subtitulador-<ver>-mac-{arm64,x64}.zip`.
 ```bash
-git clone https://github.com/adolfosmrr/subtitulador.git
-cd subtitulador
+git clone https://github.com/adolfosmrr/subtitleapp.git
+cd subtitleapp
 npm install
 npm start
 npm run dist:mac

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="${1:-adolfosmrr/subtitulador}"
+REPO="${1:-adolfosmrr/subtitleapp}"
 BRANCH="${2:-main}"
 
 command -v gh >/dev/null || { echo "Necesitás GitHub CLI (gh)"; exit 1; }

@@ -75,10 +75,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/adolfosmrr/subtitulador.git"
+    "url": "https://github.com/adolfosmrr/subtitleapp.git"
   },
-  "homepage": "https://github.com/adolfosmrr/subtitulador",
+  "homepage": "https://github.com/adolfosmrr/subtitleapp",
   "engines": {
     "node": ">=20"
+  },
+  "bugs": {
+    "url": "https://github.com/adolfosmrr/subtitleapp/issues"
   }
 }
