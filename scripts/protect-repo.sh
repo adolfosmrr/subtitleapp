@@ -16,7 +16,6 @@ gh api -X PATCH "repos/$REPO" \
   -F allow_rebase_merge=true \
   -F allow_auto_merge=false \
   -F delete_branch_on_merge=true \
-  -F allow_forking=true \
   -F web_commit_signoff_required=false >/dev/null
 
 gh api -X PUT "repos/$REPO/branches/$BRANCH/protection" --input - >/dev/null <<JSON
