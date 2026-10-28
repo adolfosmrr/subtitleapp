@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' app:; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data: blob:; media-src 'self' app: blob:; img-src 'self' data: blob:; connect-src 'self' app: https: blob: data:">
+<title>Subtitulador</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo">S</span> Subtitulador</div>
+  <button id="btnOpen" class="btn primary"><span data-i18n="Abrir video o audio…">Abrir video o audio…</span></button>
+  <div class="proj" title="Proyecto" data-i18n-title="Proyecto"><span id="projDot" class="dot" hidden title="Cambios sin guardar" data-i18n-title="Cambios sin guardar">●</span> <span id="projName"><span data-i18n="Sin título">Sin título</span></span></div>
+  <div class="file" id="fileName"><span data-i18n="Ningún archivo abierto — también podés arrastrarlo acá">Ningún archivo abierto — también podés arrastrarlo acá</span></div>
+  <div class="spacer"></div>
+  <select id="langSel" title="Idioma del audio" data-i18n-title="Idioma del audio">
+    <option value="auto" data-i18n="Idioma: detectar">Idioma: detectar</option><option value="es" data-i18n="Idioma: español">Idioma: español</option><option value="en" data-i18n="Idioma: inglés">Idioma: inglés</option>
+  </select>
+  <button id="btnTranscribe" class="btn accent" disabled><span data-i18n="🎙 Transcribir">🎙 Transcribir</span></button>
+  <select id="trSel" title="Dirección de la traducción" data-i18n-title="Dirección de la traducción">
+    <option value="auto" data-i18n="Traducir: automático">Traducir: automático</option><option value="en-es" data-i18n="Inglés → Español">Inglés → Español</option><option value="es-en" data-i18n="Español → Inglés">Español → Inglés</option>
+  </select>
+  <button id="btnTranslate" class="btn" disabled><span data-i18n="🌐 Traducir">🌐 Traducir</span></button>
+</header>
+
+<main class="layout">
+  <section class="stage">
+    <div class="player" id="player">
+      <video id="video" playsinline></video>
+      <div class="overlay" id="overlay"></div>
+      <div class="empty" id="emptyState">
+        <div class="big">🎬</div>
+        <div><span data-i18n="Abrí un video (o audio) para empezar">Abrí un video (o audio) para empezar</span></div>
+        <div class="muted"><span data-i18n="MP4, MOV, MKV, WebM, MP3, M4A, WAV…">MP4, MOV, MKV, WebM, MP3, M4A, WAV…</span></div>
+      </div>
+    </div>
+    <div class="transport">
+      <button id="btnPlay" class="btn icon" title="Reproducir / pausar (espacio)" data-i18n-title="Reproducir / pausar (espacio)">▶</button>
+      <span id="timeLbl" class="mono">00:00:00.000 / 00:00:00.000</span>
+      <input type="range" id="seek" min="0" max="1000" value="0" step="1">
+      <span id="infoLbl" class="muted mono"></span>
+    </div>
+    <div class="timeline" id="timeline"><div class="playhead" id="playhead"></div></div>
+  </section>
+
+  <aside class="side">
+    <nav class="tabs">
+      <button class="tab active" data-tab="subs"><span data-i18n="Subtítulos">Subtítulos</span></button>
+      <button class="tab" data-tab="style"><span data-i18n="Estilo">Estilo</span></button>
+      <button class="tab" data-tab="export"><span data-i18n="Exportar">Exportar</span></button>
+      <button class="tab" data-tab="settings"><span data-i18n="Ajustes">Ajustes</span></button>
+    </nav>
+
+    <div class="panel active" id="tab-subs">
+      <div class="row">
+        <button id="btnAdd" class="btn sm"><span data-i18n="＋ Agregar en el cursor">＋ Agregar en el cursor</span></button>
+        <button id="btnImport" class="btn sm ghost"><span data-i18n="Importar .srt">Importar .srt</span></button>
+        <button id="btnUndo" class="btn sm ghost" title="Deshacer (⌘Z)" data-i18n-title="Deshacer (⌘Z)"><span data-i18n="↶ Deshacer">↶ Deshacer</span></button>
+        <span class="spacer"></span><span id="segCount" class="muted"></span>
+      </div>
+      <div class="row segopts">
+        <label class="inline"><span data-i18n="Palabras por subtítulo">Palabras por subtítulo</span>
+          <select id="maxWordsSel"><option value="0" data-i18n="Automático (sin límite)">Automático (sin límite)</option>
+            <option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option><option>15</option></select></label>
+        <label class="inline"><span data-i18n="Líneas máx.">Líneas máx.</span>
+          <select id="maxLinesSel"><option value="1">1</option><option value="2">2</option></select></label>
+        <button id="btnReseg" class="btn sm" title="Vuelve a cortar los subtítulos actuales con estos límites (⌘Z para deshacer)" data-i18n-title="Vuelve a cortar los subtítulos actuales con estos límites (⌘Z para deshacer)"><span data-i18n="✂ Re-segmentar">✂ Re-segmentar</span></button>
+      </div>
+      <div id="segList" class="seglist"></div>
+    </div>
+
+    <div class="panel" id="tab-style">
+      <div class="row">
+        <select id="presetSel" class="grow"></select>
+        <button id="btnPresetDel" class="btn sm ghost" title="Borrar preset" data-i18n-title="Borrar preset">🗑</button>
+      </div>
+      <div class="row">
+        <input id="presetName" class="grow" placeholder="Nombre del preset…" data-i18n-placeholder="Nombre del preset…">
+        <button id="btnPresetSave" class="btn sm"><span data-i18n="Guardar preset">Guardar preset</span></button>
+      </div>
+      <h4><span data-i18n="Texto">Texto</span></h4>
+      <label><span data-i18n="Fuente">Fuente</span> <select id="st-fontFamily"></select></label>
+      <label><span data-i18n="Tamaño">Tamaño</span> <input type="range" id="st-fontSize" min="2" max="16" step="0.1"><output></output></label>
+      <div class="grid2">
+        <label><span data-i18n="Color">Color</span> <input type="color" id="st-color"></label>
+        <label class="chk"><input type="checkbox" id="st-bold"> <span data-i18n="Negrita">Negrita</span></label>
+        <label class="chk"><input type="checkbox" id="st-italic"> <span data-i18n="Cursiva">Cursiva</span></label>
+      </div>
+      <label><span data-i18n="Interlineado">Interlineado</span> <input type="range" id="st-lineHeight" min="0.8" max="2" step="0.05"><output></output></label>
+      <label><span data-i18n="Ancho máx. de línea">Ancho máx. de línea</span> <input type="range" id="st-maxWidth" min="30" max="100" step="1"><output></output></label>
+      <h4><span data-i18n="Borde">Borde</span></h4>
+      <div class="grid2">
+        <label><span data-i18n="Color">Color</span> <input type="color" id="st-outlineColor"></label>
+        <label><span data-i18n="Grosor">Grosor</span> <input type="range" id="st-outlineWidth" min="0" max="1.5" step="0.05"><output></output></label>
+      </div>
+      <h4><label class="chk"><input type="checkbox" id="st-shadow"> <span data-i18n="Sombra">Sombra</span></label></h4>
+      <div class="grid2">
+        <label><span data-i18n="Color">Color</span> <input type="color" id="st-shadowColor"></label>
+        <label><span data-i18n="Opacidad">Opacidad</span> <input type="range" id="st-shadowOpacity" min="0" max="1" step="0.05"><output></output></label>
+        <label><span data-i18n="Distancia">Distancia</span> <input type="range" id="st-shadowOffset" min="0" max="1.5" step="0.05"><output></output></label>
+        <label><span data-i18n="Tipo">Tipo</span> <select id="st-shadowType"><option value="solid" data-i18n="Sólida">Sólida</option><option value="blur" data-i18n="Difuminada">Difuminada</option></select></label>
+        <label id="blurRow"><span data-i18n="Difuminado">Difuminado</span> <input type="range" id="st-shadowBlur" min="0" max="2" step="0.05"><output></output></label>
+      </div>
+      <h4><label class="chk"><input type="checkbox" id="st-box"> <span data-i18n="Caja de fondo">Caja de fondo</span></label></h4>
+      <div class="grid2">
+        <label><span data-i18n="Color">Color</span> <input type="color" id="st-boxColor"></label>
+        <label><span data-i18n="Opacidad">Opacidad</span> <input type="range" id="st-boxOpacity" min="0" max="1" step="0.05"><output></output></label>
+        <label><span data-i18n="Relleno">Relleno</span> <input type="range" id="st-boxPadding" min="0" max="2" step="0.05"><output></output></label>
+      </div>
+      <p class="hint"><span data-i18n="Con caja de fondo, el borde del texto se reemplaza por la caja (igual que en libass/ASS).">Con caja de fondo, el borde del texto se reemplaza por la caja (igual que en libass/ASS).</span></p>
+      <h4><span data-i18n="Posición">Posición</span></h4>
+      <div class="seg-btns" id="posBtns">
+        <button data-pos="top"><span data-i18n="Arriba">Arriba</span></button><button data-pos="middle"><span data-i18n="Centro">Centro</span></button><button data-pos="bottom"><span data-i18n="Abajo">Abajo</span></button><button data-pos="custom"><span data-i18n="Libre">Libre</span></button>
+      </div>
+      <label><span data-i18n="Margen vertical">Margen vertical</span> <input type="range" id="st-marginV" min="0" max="40" step="0.5"><output></output></label>
+      <div class="grid2">
+        <label><span data-i18n="Desplaz. X">Desplaz. X</span> <input type="range" id="st-offsetX" min="-45" max="45" step="0.5"><output></output></label>
+        <label><span data-i18n="Desplaz. Y">Desplaz. Y</span> <input type="range" id="st-offsetY" min="-45" max="45" step="0.5"><output></output></label>
+      </div>
+      <p class="hint"><span data-i18n="Tip: arrastrá el subtítulo sobre el video para ubicarlo libremente.">Tip: arrastrá el subtítulo sobre el video para ubicarlo libremente.</span></p>
+    </div>
+
+    <div class="panel" id="tab-export">
+      <h4><span data-i18n="Video con subtítulos quemados">Video con subtítulos quemados</span></h4>
+      <label><span data-i18n="Formato">Formato</span>
+        <select id="codecSel">
+          <option value="h264" data-i18n="MP4 · H.264 (máxima compatibilidad)">MP4 · H.264 (máxima compatibilidad)</option>
+          <option value="hevc" data-i18n="MP4 · HEVC/H.265 (más liviano)">MP4 · HEVC/H.265 (más liviano)</option>
+          <option value="prores" data-i18n="MOV · ProRes 422 HQ (para edición, pesado)">MOV · ProRes 422 HQ (para edición, pesado)</option>
+        </select>
+      </label>
+      <label id="crfRow"><span data-i18n="Calidad (CRF, menor = mejor)">Calidad (CRF, menor = mejor)</span> <input type="range" id="crf" min="10" max="24" step="1" value="15"><output></output></label>
+      <label id="presetRow"><span data-i18n="Velocidad">Velocidad</span>
+        <select id="encPreset"><option value="medium" data-i18n="Normal">Normal</option><option value="slow" selected data-i18n="Lenta (mejor calidad)">Lenta (mejor calidad)</option><option value="slower" data-i18n="Muy lenta">Muy lenta</option></select>
+      </label>
+      <p class="hint"><span data-i18n="Se mantiene la resolución y los fps originales; el audio se copia sin recomprimir.">Se mantiene la resolución y los fps originales; el audio se copia sin recomprimir.</span></p>
+      <div class="row"><button id="btnBurn" class="btn primary grow" disabled><span data-i18n="🔥 Exportar video">🔥 Exportar video</span></button><button id="btnCancel" class="btn ghost" hidden><span data-i18n="Cancelar">Cancelar</span></button></div>
+      <h4><span data-i18n="Video solo con subtítulos (para componer en un editor)">Video solo con subtítulos (para componer en un editor)</span></h4>
+      <label><span data-i18n="Fondo">Fondo</span>
+        <select id="ovlSel">
+          <option value="alpha" data-i18n="Transparente · MOV ProRes 4444 con alfa">Transparente · MOV ProRes 4444 con alfa</option>
+          <option value="green" data-i18n="Verde sólido (chroma) · MP4 H.264">Verde sólido (chroma) · MP4 H.264</option>
+          <option value="black" data-i18n="Negro sólido · MP4 H.264">Negro sólido · MP4 H.264</option>
+        </select>
+      </label>
+      <p class="hint"><span data-i18n="Misma resolución, fps y duración que el original, sin el video ni el audio.">Misma resolución, fps y duración que el original, sin el video ni el audio.</span></p>
+      <div class="row"><button id="btnOverlay" class="btn grow" disabled><span data-i18n="🎞 Exportar solo subtítulos">🎞 Exportar solo subtítulos</span></button></div>
+      <h4><span data-i18n="Solo subtítulos">Solo subtítulos</span></h4>
+      <div class="row"><button id="btnSrt" class="btn grow" disabled><span data-i18n="Exportar .srt">Exportar .srt</span></button><button id="btnAss" class="btn grow" disabled><span data-i18n="Exportar .ass (con estilo)">Exportar .ass (con estilo)</span></button></div>
+      <div id="exportLog" class="log"></div>
+    </div>
+
+    <div class="panel" id="tab-settings">
+      <h4><span data-i18n="Transcripción (Whisper, local)">Transcripción (Whisper, local)</span></h4>
+      <label><span data-i18n="Modelo">Modelo</span>
+        <select id="modelSel">
+          <option value="tiny" data-i18n="Tiny · ~75 MB · el más rápido, menos preciso">Tiny · ~75 MB · el más rápido, menos preciso</option>
+          <option value="base" data-i18n="Base · ~150 MB · rápido">Base · ~150 MB · rápido</option>
+          <option value="small" data-i18n="Small · ~500 MB · buen equilibrio (recomendado)">Small · ~500 MB · buen equilibrio (recomendado)</option>
+          <option value="turbo" data-i18n="Large v3 Turbo · ~1.6 GB · el más preciso, lento">Large v3 Turbo · ~1.6 GB · el más preciso, lento</option>
+        </select>
+      </label>
+      <label><span data-i18n="Procesador">Procesador</span>
+        <select id="deviceSel"><option value="auto" data-i18n="Automático (GPU si está disponible)">Automático (GPU si está disponible)</option><option value="webgpu" data-i18n="GPU (WebGPU)">GPU (WebGPU)</option><option value="wasm" data-i18n="CPU (WASM)">CPU (WASM)</option></select>
+      </label>
+      <p class="hint"><span data-i18n="Los modelos se descargan una sola vez y quedan guardados; después todo funciona sin internet. La traducción usa Opus-MT (≈ 2×75 MB).">Los modelos se descargan una sola vez y quedan guardados; después todo funciona sin internet. La traducción usa Opus-MT (≈ 2×75 MB).</span></p>
+      <h4><span data-i18n="Interfaz">Interfaz</span></h4>
+      <label><span data-i18n="Idioma de la interfaz">Idioma de la interfaz</span>
+        <select id="uiLangSel"><option value="auto" data-i18n="Automático (sistema)">Automático (sistema)</option><option value="es">Español</option><option value="en">English</option></select>
+      </label>
+      <h4><span data-i18n="Acerca de">Acerca de</span></h4>
+      <p class="hint" id="aboutTxt"></p>
+    </div>
+  </aside>
+</main>
+
+<footer class="status">
+  <span id="statusTxt"><span data-i18n="Listo.">Listo.</span></span>
+  <div class="progress" id="progWrap" hidden><div id="progBar"></div></div>
+  <span id="progTxt" class="muted mono"></span>
+</footer>
+<div id="toast" class="toast" hidden></div>
+<script src="lib/i18n.js"></script>
+<script src="lib/subs.js"></script>
+<script src="app.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+{
+  "name": "subtitulador",
+  "version": "1.3.0",
+  "description": "Local AI subtitles for macOS: transcribe, translate EN↔ES, style & burn-in",
+  "main": "src/main.js",
+  "scripts": {
+    "vendor": "node scripts/vendor.js && node scripts/fetch-ffmpeg.js",
+    "start": "npm run vendor && electron .",
+    "selftest": "node scripts/selftest.js",
+    "dist:mac": "npm run vendor && node scripts/build-mac.js"
+  },
+  "keywords": [],
+  "author": "Adolfo Mesen",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^41.7.1",
+    "electron-builder": "^26.18.0",
+    "@huggingface/transformers": "^4.3.2"
+  },
+  "productName": "Subtitulador",
+  "build": {
+    "appId": "ar.adolfo.subtitulador",
+    "productName": "Subtitulador",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "extraResources": [
+      {
+        "from": "fonts",
+        "to": "fonts"
+      },
+      {
+        "from": "staging/bin-${arch}",
+        "to": "bin"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.video",
+      "target": [
+        "zip"
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "icon": "build/icon.png",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "No se usa el micrófono."
+      }
+    },
+    "fileAssociations": [
+      {
+        "ext": "subtitulador",
+        "name": "Proyecto Subtitulador",
+        "description": "Proyecto de Subtitulador",
+        "role": "Editor",
+        "icon": "build/icon.png"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/adolfosmrr/subtitulador.git"
+  },
+  "homepage": "https://github.com/adolfosmrr/subtitulador"
+}
